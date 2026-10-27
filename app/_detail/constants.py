@@ -1,0 +1,7 @@
+"""Business limits shared by schemas, services and tests."""
+
+PROJECT_NAME_MAX_LENGTH = 100
+TASK_TITLE_MAX_LENGTH = 150
+COMMENT_BODY_MAX_LENGTH = 2000
+PAGE_LIMIT_DEFAULT = 20
+PAGE_LIMIT_MAX = 100
