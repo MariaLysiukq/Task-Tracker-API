@@ -14,7 +14,7 @@ from app.models.base import Base, TimestampMixin
 class User(TimestampMixin, Base):
     """Registered user.
 
-    ``email`` is stored lowercase (normalized by the service layer).
+    ``email`` is stored lowercase (normalized by the request schemas).
     """
 
     __tablename__ = "users"
