@@ -1,5 +1,6 @@
 """Integration tests for ``/api/v1/projects/{project_id}/tasks`` and ``/api/v1/tasks/{task_id}``."""
 
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -95,6 +96,7 @@ async def create_task(
     ("method", "path"),
     [
         ("POST", f"{PROJECTS}/1/tasks"),
+        ("GET", f"{PROJECTS}/1/tasks"),
         ("GET", f"{TASKS}/1"),
         ("PATCH", f"{TASKS}/1"),
         ("DELETE", f"{TASKS}/1"),
@@ -306,3 +308,117 @@ async def test_project_delete_removes_tasks(client: AsyncClient) -> None:
     task = await create_task(client, project_id, owner)
     assert (await client.delete(f"{PROJECTS}/{project_id}", headers=owner)).status_code == 204
     assert (await client.get(f"{TASKS}/{task['id']}", headers=owner)).status_code == 404
+
+
+async def list_titles(
+    client: AsyncClient, project_id: int, headers: dict[str, str], **params: Any
+) -> list[str]:
+    """List a project's tasks and return their titles.
+
+    Parameters
+    ----------
+    client : AsyncClient
+        Test client.
+    project_id : int
+        Project identifier.
+    headers : dict[str, str]
+        ``Authorization`` header of a project member.
+    **params : Any
+        Query parameters.
+
+    Returns
+    -------
+    list[str]
+        Titles in listed order.
+    """
+    response = await client.get(tasks_url(project_id), headers=headers, params=params)
+    assert response.status_code == 200
+    return [task["title"] for task in response.json()["items"]]
+
+
+async def test_list_by_member_with_pagination(client: AsyncClient) -> None:
+    """Members get a newest-first page with ``total``, ``limit`` and ``offset``."""
+    project_id, owner, member, _ = await make_team(client)
+    for title in ("first", "second", "third"):
+        await create_task(client, project_id, owner, title=title)
+    response = await client.get(tasks_url(project_id), headers=member)
+    assert response.status_code == 200
+    body = response.json()
+    assert (body["total"], body["limit"], body["offset"]) == (3, 20, 0)
+    assert [task["title"] for task in body["items"]] == ["third", "second", "first"]
+    assert set(body["items"][0]) == TASK_FIELDS
+    response = await client.get(
+        tasks_url(project_id), headers=member, params={"limit": 1, "offset": 1}
+    )
+    assert response.json() | {"items": None} == {
+        "items": None,
+        "total": 3,
+        "limit": 1,
+        "offset": 1,
+    }
+    assert [task["title"] for task in response.json()["items"]] == ["second"]
+
+
+async def test_list_filters(client: AsyncClient) -> None:
+    """``status``, ``priority``, ``assignee_id`` and ``overdue`` narrow the list."""
+    project_id, owner, member, _ = await make_team(client)
+    member_id = await get_user_id(client, member)
+    past = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
+    future = (datetime.now(UTC) + timedelta(days=1)).isoformat()
+    await create_task(client, project_id, owner, title="late", due_at=past, assignee_id=member_id)
+    await create_task(client, project_id, owner, title="done-late", due_at=past, status="done")
+    await create_task(client, project_id, owner, title="soon", due_at=future, priority="high")
+    await create_task(client, project_id, owner, title="no-due", status="in_progress")
+    assert await list_titles(client, project_id, member, status="done") == ["done-late"]
+    assert await list_titles(client, project_id, member, priority="high") == ["soon"]
+    assert await list_titles(client, project_id, member, assignee_id=member_id) == ["late"]
+    assert await list_titles(client, project_id, member, overdue="true") == ["late"]
+    assert await list_titles(client, project_id, member, overdue="false") == [
+        "no-due",
+        "soon",
+        "done-late",
+    ]
+    assert await list_titles(client, project_id, member, status="todo", priority="high") == ["soon"]
+
+
+async def test_list_sorting(client: AsyncClient) -> None:
+    """``sort`` and ``order`` change the order; the default is newest first."""
+    project_id, owner, _, _ = await make_team(client)
+    for title in ("first", "second", "third"):
+        await create_task(client, project_id, owner, title=title)
+    assert await list_titles(client, project_id, owner, order="asc") == ["first", "second", "third"]
+    assert await list_titles(client, project_id, owner, sort="id", order="desc") == [
+        "third",
+        "second",
+        "first",
+    ]
+
+
+async def test_list_hidden_from_outsider_and_missing_project(client: AsyncClient) -> None:
+    """Non-members and missing projects give 404; other teams' tasks never leak."""
+    project_id, owner, _, outsider = await make_team(client)
+    await create_task(client, project_id, owner)
+    for target in (project_id, project_id + 100):
+        response = await client.get(tasks_url(target), headers=outsider)
+        assert response.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {"limit": 0},
+        {"limit": 101},
+        {"offset": -1},
+        {"status": "unknown"},
+        {"priority": "urgent"},
+        {"assignee_id": 0},
+        {"overdue": "maybe"},
+        {"sort": "title"},
+        {"order": "up"},
+    ],
+)
+async def test_list_rejects_invalid_query(client: AsyncClient, params: dict[str, Any]) -> None:
+    """Out-of-range pagination and unknown filter or sort values give 422."""
+    project_id, owner, _, _ = await make_team(client)
+    response = await client.get(tasks_url(project_id), headers=owner, params=params)
+    assert response.status_code == 422

@@ -3,10 +3,11 @@
 Functions only flush; the calling service owns the transaction and commits.
 """
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import ColumnElement, and_, func, not_, select
 from sqlalchemy import update as sql_update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -80,6 +81,86 @@ async def get_by_id(session: AsyncSession, task_id: int) -> Task | None:
         The task, or ``None`` if it does not exist.
     """
     return await session.get(Task, task_id)
+
+
+def overdue_condition(now: datetime) -> ColumnElement[bool]:
+    """Build the SQL condition for an overdue task.
+
+    Parameters
+    ----------
+    now : datetime
+        Current UTC moment.
+
+    Returns
+    -------
+    ColumnElement[bool]
+        ``due_at < now AND status != 'done'``.
+    """
+    return and_(Task.due_at.is_not(None), Task.due_at < now, Task.status != TaskStatus.DONE)
+
+
+async def list_for_project(
+    session: AsyncSession,
+    project_id: int,
+    *,
+    status: TaskStatus | None,
+    priority: TaskPriority | None,
+    assignee_id: int | None,
+    overdue: bool | None,
+    now: datetime,
+    sort: str,
+    descending: bool,
+    limit: int,
+    offset: int,
+) -> tuple[Sequence[Task], int]:
+    """Return one filtered, sorted page of a project's tasks.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Active database session.
+    project_id : int
+        Project identifier.
+    status : TaskStatus | None
+        Only tasks with this status, if given.
+    priority : TaskPriority | None
+        Only tasks with this priority, if given.
+    assignee_id : int | None
+        Only tasks assigned to this user, if given.
+    overdue : bool | None
+        ``True``: only overdue tasks; ``False``: only not overdue; ``None``: all.
+    now : datetime
+        Current UTC moment used for the overdue check.
+    sort : str
+        Sort column, ``created_at`` or ``id``.
+    descending : bool
+        Sort direction.
+    limit : int
+        Maximum number of items.
+    offset : int
+        Number of items to skip.
+
+    Returns
+    -------
+    tuple[Sequence[Task], int]
+        Page items and the total count; ``id`` breaks ties in the same direction.
+    """
+    conditions: list[ColumnElement[bool]] = [Task.project_id == project_id]
+    if status is not None:
+        conditions.append(Task.status == status)
+    if priority is not None:
+        conditions.append(Task.priority == priority)
+    if assignee_id is not None:
+        conditions.append(Task.assignee_id == assignee_id)
+    if overdue is not None:
+        conditions.append(overdue_condition(now) if overdue else not_(overdue_condition(now)))
+    columns = [Task.created_at, Task.id] if sort == "created_at" else [Task.id]
+    order_by = [column.desc() if descending else column.asc() for column in columns]
+    total = await session.scalar(select(func.count()).select_from(Task).where(*conditions))
+    items = await session.scalars(
+        select(Task).where(*conditions).order_by(*order_by).limit(limit).offset(offset),
+    )
+    return items.all(), total or 0
 
 
 async def update(session: AsyncSession, task: Task, values: Mapping[str, Any]) -> Task:

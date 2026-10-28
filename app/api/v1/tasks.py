@@ -1,9 +1,12 @@
-"""Task endpoints: creation inside a project and access by task id."""
+"""Task endpoints: creation and listing inside a project, access by task id."""
 
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from app.api.deps import CurrentUserDep, SessionDep
-from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
+from app.schemas.common import Page
+from app.schemas.task import TaskCreate, TaskListParams, TaskRead, TaskUpdate
 from app.services import task as task_service
 
 router = APIRouter(tags=["tasks"])
@@ -35,6 +38,41 @@ async def create_task(
         The created task (404 for non-members, 422 if the assignee is not a member).
     """
     return TaskRead.model_validate(await task_service.create_task(session, user, project_id, data))
+
+
+@router.get("/projects/{project_id}/tasks")
+async def list_tasks(
+    project_id: int,
+    params: Annotated[TaskListParams, Query()],
+    user: CurrentUserDep,
+    session: SessionDep,
+) -> Page[TaskRead]:
+    """List a project's tasks with filters, sorting and pagination (any member).
+
+    Parameters
+    ----------
+    project_id : int
+        Project identifier.
+    params : TaskListParams
+        ``status``, ``priority``, ``assignee_id``, ``overdue`` filters,
+        ``sort`` (``created_at``/``id``), ``order`` (``desc``/``asc``), ``limit``, ``offset``.
+    user : User
+        Authenticated user.
+    session : AsyncSession
+        Request database session.
+
+    Returns
+    -------
+    Page[TaskRead]
+        One page of tasks with the total count (404 for non-members).
+    """
+    items, total = await task_service.list_tasks(session, user, project_id, params)
+    return Page[TaskRead](
+        items=[TaskRead.model_validate(item) for item in items],
+        total=total,
+        limit=params.limit,
+        offset=params.offset,
+    )
 
 
 @router.get("/tasks/{task_id}")

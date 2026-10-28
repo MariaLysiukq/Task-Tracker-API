@@ -4,13 +4,17 @@ A task is hidden (404) from users who are not members of its project;
 an assignee outside the project is rejected with 422.
 """
 
+from collections.abc import Sequence
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app._detail.helpers import utc_now
 from app.core.exceptions import InvalidDataError, NotFoundError
 from app.models import Task, User
 from app.repositories import membership as membership_repo
 from app.repositories import task as task_repo
-from app.schemas.task import TaskCreate, TaskUpdate
+from app.schemas.common import SortOrder
+from app.schemas.task import TaskCreate, TaskListParams, TaskUpdate
 from app.services.project import get_member_project
 
 TASK_NOT_FOUND = "Task not found"
@@ -110,6 +114,51 @@ async def create_task(
     task = await task_repo.create(session, project_id=project_id, **data.model_dump())
     await session.commit()
     return task
+
+
+async def list_tasks(
+    session: AsyncSession,
+    user: User,
+    project_id: int,
+    params: TaskListParams,
+) -> tuple[Sequence[Task], int]:
+    """Return one filtered, sorted page of a project's tasks.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Active database session.
+    user : User
+        Authenticated user.
+    project_id : int
+        Project identifier.
+    params : TaskListParams
+        Filters, sorting and pagination.
+
+    Returns
+    -------
+    tuple[Sequence[Task], int]
+        Page items and the total count.
+
+    Raises
+    ------
+    NotFoundError
+        If the project does not exist or the user is not a member.
+    """
+    await get_member_project(session, user, project_id)
+    return await task_repo.list_for_project(
+        session,
+        project_id,
+        status=params.status,
+        priority=params.priority,
+        assignee_id=params.assignee_id,
+        overdue=params.overdue,
+        now=utc_now(),
+        sort=params.sort,
+        descending=params.order == SortOrder.DESC,
+        limit=params.limit,
+        offset=params.offset,
+    )
 
 
 async def update_task(session: AsyncSession, user: User, task_id: int, data: TaskUpdate) -> Task:

@@ -8,7 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import InvalidDataError, NotFoundError
 from app.models import Comment, Task, TaskPriority, TaskStatus
-from app.schemas.task import TaskCreate, TaskUpdate
+from app.schemas.common import SortOrder
+from app.schemas.task import TaskCreate, TaskListParams, TaskSortField, TaskUpdate
 from app.services import membership as membership_service
 from app.services import project as project_service
 from app.services import task as task_service
@@ -170,3 +171,34 @@ async def test_removed_member_loses_task_access(db_session: AsyncSession) -> Non
     await membership_service.remove_member(db_session, owner, project.id, member.id)
     with pytest.raises(NotFoundError, match=task_service.TASK_NOT_FOUND):
         await task_service.get_member_task(db_session, member, task.id)
+
+
+async def test_list_tasks_filters_overdue_and_sorts(db_session: AsyncSession) -> None:
+    """Members list tasks; overdue uses the current time and skips done tasks."""
+    project, owner, member, _ = await make_team(db_session)
+    past = datetime.now(UTC) - timedelta(hours=1)
+    for data in (
+        TaskCreate(title="late", due_at=past, assignee_id=member.id),
+        TaskCreate(title="done-late", due_at=past, status=TaskStatus.DONE),
+        TaskCreate(title="future", due_at=datetime.now(UTC) + timedelta(days=1)),
+    ):
+        await task_service.create_task(db_session, owner, project.id, data)
+    items, total = await task_service.list_tasks(
+        db_session, member, project.id, TaskListParams(overdue=True)
+    )
+    assert ([task.title for task in items], total) == (["late"], 1)
+    items, total = await task_service.list_tasks(
+        db_session,
+        member,
+        project.id,
+        TaskListParams(sort=TaskSortField.ID, order=SortOrder.ASC, limit=2),
+    )
+    assert ([task.title for task in items], total) == (["late", "done-late"], 3)
+
+
+async def test_list_tasks_hidden_from_outsider(db_session: AsyncSession) -> None:
+    """A non-member or a missing project gives 404."""
+    project, _, _, outsider = await make_team(db_session)
+    for project_id in (project.id, project.id + 1):
+        with pytest.raises(NotFoundError, match=project_service.PROJECT_NOT_FOUND):
+            await task_service.list_tasks(db_session, outsider, project_id, TaskListParams())
