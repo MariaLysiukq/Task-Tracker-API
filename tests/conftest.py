@@ -6,8 +6,14 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
+from app.api import deps
 from app.core.config import Settings, get_settings
 from app.main import create_app
 from app.models import Base
@@ -40,33 +46,83 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[Settings]:
 
 
 @pytest.fixture
-async def db_session() -> AsyncIterator[AsyncSession]:
-    """Yield a session on freshly created tables, dropped afterwards.
+async def db_engine() -> AsyncIterator[AsyncEngine]:
+    """Yield an engine on freshly created tables, dropped afterwards.
 
     Yields
     ------
-    AsyncSession
-        Session bound to the test database.
+    AsyncEngine
+        Engine bound to the test database.
     """
     engine = create_async_engine(TEST_DB_URL)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
-    async with AsyncSession(engine, expire_on_commit=False) as session:
-        yield session
+    yield engine
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.drop_all)
     await engine.dispose()
 
 
 @pytest.fixture
-def app() -> FastAPI:
-    """Return a fresh application instance.
+def session_factory(db_engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+    """Return a session factory bound to the test engine.
+
+    Parameters
+    ----------
+    db_engine : AsyncEngine
+        Test engine.
+
+    Returns
+    -------
+    async_sessionmaker[AsyncSession]
+        Factory configured like the application one.
+    """
+    return async_sessionmaker(db_engine, expire_on_commit=False)
+
+
+@pytest.fixture
+async def db_session(
+    session_factory: async_sessionmaker[AsyncSession],
+) -> AsyncIterator[AsyncSession]:
+    """Yield a session on the test database.
+
+    Parameters
+    ----------
+    session_factory : async_sessionmaker[AsyncSession]
+        Test session factory.
+
+    Yields
+    ------
+    AsyncSession
+        Session bound to the test database.
+    """
+    async with session_factory() as session:
+        yield session
+
+
+@pytest.fixture
+def app(
+    settings: Settings,
+    session_factory: async_sessionmaker[AsyncSession],
+    monkeypatch: pytest.MonkeyPatch,
+) -> FastAPI:
+    """Return a fresh application wired to the test database.
+
+    Parameters
+    ----------
+    settings : Settings
+        Test settings (JWT key).
+    session_factory : async_sessionmaker[AsyncSession]
+        Test session factory replacing the application one.
+    monkeypatch : pytest.MonkeyPatch
+        Used to swap the factory behind ``get_session``.
 
     Returns
     -------
     FastAPI
         Application isolated from other tests.
     """
+    monkeypatch.setattr(deps, "get_session_factory", lambda: session_factory)
     return create_app()
 
 
