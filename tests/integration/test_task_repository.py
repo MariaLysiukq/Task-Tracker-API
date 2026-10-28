@@ -2,28 +2,36 @@
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Task
+from app.models import Task, User
 from app.repositories import project as project_repo
 from app.repositories import task as task_repo
 from app.repositories import user as user_repo
+
+
+async def make_user(session: AsyncSession, email: str) -> User:
+    """Create a user with fixed name and hash.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Test session.
+    email : str
+        Email to register.
+
+    Returns
+    -------
+    User
+        Flushed user.
+    """
+    return await user_repo.create(session, email=email, hashed_password="hash", full_name="Ann")  # noqa: S106
 
 
 async def test_unassign_user_in_project_touches_only_that_project_and_user(
     db_session: AsyncSession,
 ) -> None:
     """Only the user's tasks in the given project lose their assignee."""
-    ann = await user_repo.create(
-        db_session,
-        email="ann@example.com",
-        hashed_password="hash",
-        full_name="Ann",  # noqa: S106
-    )
-    bob = await user_repo.create(
-        db_session,
-        email="bob@example.com",
-        hashed_password="hash",
-        full_name="Bob",  # noqa: S106
-    )
+    ann = await make_user(db_session, "ann@example.com")
+    bob = await make_user(db_session, "bob@example.com")
     alpha = await project_repo.create(db_session, name="Alpha", description=None, owner_id=ann.id)
     beta = await project_repo.create(db_session, name="Beta", description=None, owner_id=ann.id)
     tasks = [
