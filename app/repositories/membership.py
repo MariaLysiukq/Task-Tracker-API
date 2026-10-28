@@ -73,6 +73,20 @@ async def get(session: AsyncSession, project_id: int, user_id: int) -> Membershi
     return result.one_or_none()
 
 
+async def delete(session: AsyncSession, membership: Membership) -> None:
+    """Delete a membership.
+
+    Parameters
+    ----------
+    session : AsyncSession
+        Active database session.
+    membership : Membership
+        Persistent membership to delete.
+    """
+    await session.delete(membership)
+    await session.flush()
+
+
 async def list_for_project(
     session: AsyncSession,
     project_id: int,

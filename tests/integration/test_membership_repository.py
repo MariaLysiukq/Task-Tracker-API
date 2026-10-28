@@ -102,3 +102,19 @@ async def test_list_for_project_newest_first_and_paginated(db_session: AsyncSess
     items, total = await membership_repo.list_for_project(db_session, project.id, limit=1, offset=1)
     assert [membership.user_id for membership in items] == [owner.id]
     assert total == 2
+
+
+async def test_delete_removes_only_that_membership(db_session: AsyncSession) -> None:
+    """Deleting one membership keeps the project and other members."""
+    project, owner = await make_project(db_session)
+    await membership_repo.create(
+        db_session, project_id=project.id, user_id=owner.id, role=MembershipRole.OWNER
+    )
+    bob = await make_user(db_session, "bob@example.com")
+    membership = await membership_repo.create(
+        db_session, project_id=project.id, user_id=bob.id, role=MembershipRole.MEMBER
+    )
+    await membership_repo.delete(db_session, membership)
+    assert await membership_repo.get(db_session, project.id, bob.id) is None
+    assert await membership_repo.get(db_session, project.id, owner.id) is not None
+    assert await project_repo.get_by_id(db_session, project.id) is project
