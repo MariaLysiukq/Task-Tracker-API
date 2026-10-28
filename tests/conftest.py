@@ -1,12 +1,37 @@
 """Shared pytest fixtures."""
 
+import os
 from collections.abc import AsyncIterator
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
 from app.main import create_app
+from app.models import Base
+
+# Dedicated test PostgreSQL if configured, otherwise in-memory SQLite; never ``DATABASE_URL``.
+TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
+
+@pytest.fixture
+async def db_session() -> AsyncIterator[AsyncSession]:
+    """Yield a session on freshly created tables, dropped afterwards.
+
+    Yields
+    ------
+    AsyncSession
+        Session bound to the test database.
+    """
+    engine = create_async_engine(TEST_DB_URL)
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)
+    async with AsyncSession(engine, expire_on_commit=False) as session:
+        yield session
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest.fixture
