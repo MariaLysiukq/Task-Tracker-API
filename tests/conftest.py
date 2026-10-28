@@ -1,18 +1,42 @@
 """Shared pytest fixtures."""
 
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from app.core.config import Settings, get_settings
 from app.main import create_app
 from app.models import Base
 
 # Dedicated test PostgreSQL if configured, otherwise in-memory SQLite; never ``DATABASE_URL``.
 TEST_DB_URL = os.environ.get("TEST_DATABASE_URL", "sqlite+aiosqlite:///:memory:")
+
+
+@pytest.fixture
+def settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[Settings]:
+    """Point application settings at the test database and a test JWT key.
+
+    Parameters
+    ----------
+    monkeypatch : pytest.MonkeyPatch
+        Used to set environment variables for this test only.
+
+    Yields
+    ------
+    Settings
+        Settings built from the patched environment.
+    """
+    monkeypatch.setenv("DATABASE_URL", TEST_DB_URL)
+    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("JWT_ALGORITHM", "HS256")
+    monkeypatch.setenv("JWT_EXPIRE_MINUTES", "30")
+    get_settings.cache_clear()
+    yield get_settings()
+    get_settings.cache_clear()
 
 
 @pytest.fixture
