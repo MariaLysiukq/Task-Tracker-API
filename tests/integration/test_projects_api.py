@@ -4,46 +4,11 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import MembershipRole
-from app.repositories import membership as membership_repo
-from tests.integration.api_helpers import register_and_login
+from tests.integration.api_helpers import make_team, register_and_login
 
 PROJECTS = "/api/v1/projects"
 ME = "/api/v1/users/me"
-
-
-async def make_team(
-    client: AsyncClient,
-    db_session: AsyncSession,
-) -> tuple[int, dict[str, str], dict[str, str], dict[str, str]]:
-    """Create a project via the API with an owner, a member and an outsider.
-
-    The member is added directly in the database until the members endpoint exists.
-
-    Parameters
-    ----------
-    client : AsyncClient
-        Test client.
-    db_session : AsyncSession
-        Test session.
-
-    Returns
-    -------
-    tuple[int, dict[str, str], dict[str, str], dict[str, str]]
-        Project id and auth headers of the owner, member and outsider.
-    """
-    owner = await register_and_login(client, "owner@example.com")
-    member = await register_and_login(client, "member@example.com")
-    outsider = await register_and_login(client, "outsider@example.com")
-    project_id = (await client.post(PROJECTS, headers=owner, json={"name": "Alpha"})).json()["id"]
-    member_id = (await client.get(ME, headers=member)).json()["id"]
-    await membership_repo.create(
-        db_session, project_id=project_id, user_id=member_id, role=MembershipRole.MEMBER
-    )
-    await db_session.commit()
-    return project_id, owner, member, outsider
 
 
 @pytest.mark.parametrize(
@@ -93,10 +58,9 @@ async def test_create_invalid_payload_returns_422(
 
 async def test_list_shows_only_own_projects(
     client: AsyncClient,
-    db_session: AsyncSession,
 ) -> None:
     """Members see the project; outsiders get an empty page."""
-    project_id, owner, member, outsider = await make_team(client, db_session)
+    project_id, owner, member, outsider = await make_team(client)
     for headers in (owner, member):
         body = (await client.get(PROJECTS, headers=headers)).json()
         assert [item["id"] for item in body["items"]] == [project_id]
@@ -131,9 +95,9 @@ async def test_list_invalid_pagination_returns_422(
     assert (await client.get(PROJECTS, headers=headers, params=params)).status_code == 422
 
 
-async def test_read_by_members_only(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_read_by_members_only(client: AsyncClient) -> None:
     """Members read the project; outsiders and missing ids get 404."""
-    project_id, owner, member, outsider = await make_team(client, db_session)
+    project_id, owner, member, outsider = await make_team(client)
     url = f"{PROJECTS}/{project_id}"
     assert (await client.get(url, headers=owner)).status_code == 200
     assert (await client.get(url, headers=member)).json()["name"] == "Alpha"
@@ -141,9 +105,9 @@ async def test_read_by_members_only(client: AsyncClient, db_session: AsyncSessio
     assert (await client.get(f"{PROJECTS}/{project_id + 1}", headers=owner)).status_code == 404
 
 
-async def test_update_by_owner(client: AsyncClient, db_session: AsyncSession) -> None:
+async def test_update_by_owner(client: AsyncClient) -> None:
     """The owner changes sent fields; the description can be cleared."""
-    project_id, owner, _, _ = await make_team(client, db_session)
+    project_id, owner, _, _ = await make_team(client)
     response = await client.patch(
         f"{PROJECTS}/{project_id}", headers=owner, json={"name": "Beta", "description": None}
     )
@@ -157,12 +121,11 @@ async def test_update_by_owner(client: AsyncClient, db_session: AsyncSession) ->
 )
 async def test_update_and_delete_by_non_owner(
     client: AsyncClient,
-    db_session: AsyncSession,
     who: str,
     expected_status: int,
 ) -> None:
     """Members get 403, outsiders 404; the project is unchanged."""
-    project_id, owner, member, outsider = await make_team(client, db_session)
+    project_id, owner, member, outsider = await make_team(client)
     headers = member if who == "member" else outsider
     url = f"{PROJECTS}/{project_id}"
     patch = await client.patch(url, headers=headers, json={"name": "Hacked"})
@@ -189,10 +152,9 @@ async def test_update_invalid_payload_returns_422(
 
 async def test_delete_by_owner_unblocks_account_deletion(
     client: AsyncClient,
-    db_session: AsyncSession,
 ) -> None:
     """After 204 the project is gone for everyone and the owner can delete the account."""
-    project_id, owner, member, _ = await make_team(client, db_session)
+    project_id, owner, member, _ = await make_team(client)
     url = f"{PROJECTS}/{project_id}"
     assert (await client.delete(ME, headers=owner)).status_code == 409
     response = await client.delete(url, headers=owner)
