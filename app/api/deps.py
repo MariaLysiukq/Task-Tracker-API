@@ -3,13 +3,14 @@
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session_factory
 from app.core.exceptions import UnauthorizedError
 from app.models import User
+from app.schemas.common import PageParams
 from app.services import auth as auth_service
 
 NOT_AUTHENTICATED = "Not authenticated"
@@ -61,3 +62,4 @@ async def get_current_user(
 
 
 CurrentUserDep = Annotated[User, Depends(get_current_user)]
+PageDep = Annotated[PageParams, Query()]
