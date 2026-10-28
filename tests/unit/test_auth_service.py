@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
 from app.core.exceptions import ConflictError, UnauthorizedError
-from app.core.security import create_access_token, verify_password
+from app.core.security import INVALID_TOKEN, create_access_token, verify_password
 from app.schemas.user import LoginRequest, UserCreate
 from app.services import auth
 
@@ -91,8 +91,8 @@ async def test_authenticate_rejects_token_of_missing_user(
     db_session: AsyncSession,
     settings: Settings,
 ) -> None:
-    """A valid token for a deleted or never-existing user is 401."""
-    with pytest.raises(UnauthorizedError):
+    """A valid token for a deleted or never-existing user is 401 with the token message."""
+    with pytest.raises(UnauthorizedError, match=INVALID_TOKEN):
         await auth.authenticate(db_session, create_access_token(999))
 
 

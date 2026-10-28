@@ -20,9 +20,13 @@ async def domain_error_handler(_: Request, error: DomainError) -> JSONResponse:
     Returns
     -------
     JSONResponse
-        Response with the error status code and ``{"detail": ...}`` body.
+        Response with the error status code, ``{"detail": ...}`` body and error headers.
     """
-    return JSONResponse(status_code=error.status_code, content={"detail": error.detail})
+    return JSONResponse(
+        status_code=error.status_code,
+        content={"detail": error.detail},
+        headers=error.headers,
+    )
 
 
 def create_app() -> FastAPI:

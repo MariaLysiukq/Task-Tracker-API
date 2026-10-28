@@ -55,6 +55,7 @@ async def test_me_requires_valid_token(
     """Every ``/users/me`` method answers 401 without a valid bearer token."""
     response = await client.request(method, ME, headers=headers, json={"full_name": "X"})
     assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
 
 
 async def test_update_me(client: AsyncClient) -> None:

@@ -1,5 +1,7 @@
 """Domain errors raised by services and mapped to HTTP responses in ``app.main``."""
 
+from typing import ClassVar
+
 from fastapi import status
 
 
@@ -13,6 +15,7 @@ class DomainError(Exception):
     """
 
     status_code: int = status.HTTP_400_BAD_REQUEST
+    headers: ClassVar[dict[str, str] | None] = None
 
     def __init__(self, detail: str) -> None:
         super().__init__(detail)
@@ -20,9 +23,10 @@ class DomainError(Exception):
 
 
 class UnauthorizedError(DomainError):
-    """Missing or invalid credentials."""
+    """Missing or invalid credentials; the response carries ``WWW-Authenticate: Bearer``."""
 
     status_code = status.HTTP_401_UNAUTHORIZED
+    headers = {"WWW-Authenticate": "Bearer"}
 
 
 class ForbiddenError(DomainError):

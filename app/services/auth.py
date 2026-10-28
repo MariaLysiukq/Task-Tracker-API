@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, UnauthorizedError
 from app.core.security import (
+    INVALID_TOKEN,
     create_access_token,
     decode_access_token,
     hash_password,
@@ -103,5 +104,5 @@ async def authenticate(session: AsyncSession, token: str) -> User:
     """
     user = await user_repo.get_by_id(session, decode_access_token(token))
     if user is None:
-        raise UnauthorizedError(INVALID_CREDENTIALS)
+        raise UnauthorizedError(INVALID_TOKEN)
     return user

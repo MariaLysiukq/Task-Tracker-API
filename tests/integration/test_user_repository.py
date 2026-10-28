@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import User
+from app.models import Project, User
 from app.repositories import user as user_repo
 
 
@@ -81,3 +81,12 @@ async def test_delete(db_session: AsyncSession) -> None:
     user_id = user.id
     await user_repo.delete(db_session, user)
     assert await user_repo.get_by_id(db_session, user_id) is None
+
+
+async def test_delete_project_owner_raises(db_session: AsyncSession) -> None:
+    """``RESTRICT`` on ``projects.owner_id`` blocks deleting an owner (foreign keys enforced)."""
+    user = await make_user(db_session)
+    db_session.add(Project(name="Alpha", owner_id=user.id))
+    await db_session.flush()
+    with pytest.raises(IntegrityError):
+        await user_repo.delete(db_session, user)

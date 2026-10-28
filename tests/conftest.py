@@ -6,12 +6,15 @@ from collections.abc import AsyncIterator, Iterator
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import event
+from sqlalchemy.engine.interfaces import DBAPIConnection
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.pool import ConnectionPoolEntry
 
 from app.api import deps
 from app.core.config import Settings, get_settings
@@ -45,6 +48,21 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[Settings]:
     get_settings.cache_clear()
 
 
+def enable_sqlite_foreign_keys(connection: DBAPIConnection, _: ConnectionPoolEntry) -> None:
+    """Turn on foreign key enforcement, which SQLite disables by default.
+
+    Parameters
+    ----------
+    connection : DBAPIConnection
+        Freshly opened DBAPI connection.
+    _ : ConnectionPoolEntry
+        Pool record (unused).
+    """
+    cursor = connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
+
+
 @pytest.fixture
 async def db_engine() -> AsyncIterator[AsyncEngine]:
     """Yield an engine on freshly created tables, dropped afterwards.
@@ -55,6 +73,8 @@ async def db_engine() -> AsyncIterator[AsyncEngine]:
         Engine bound to the test database.
     """
     engine = create_async_engine(TEST_DB_URL)
+    if engine.dialect.name == "sqlite":
+        event.listen(engine.sync_engine, "connect", enable_sqlite_foreign_keys)
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
     yield engine

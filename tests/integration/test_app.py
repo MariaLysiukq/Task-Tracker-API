@@ -59,3 +59,20 @@ async def test_openapi_is_served(client: AsyncClient) -> None:
     response = await client.get("/openapi.json")
     assert response.status_code == 200
     assert response.json()["info"]["title"] == "Task Tracker API"
+
+
+@pytest.mark.parametrize(
+    ("error_class", "expected_header"),
+    [(UnauthorizedError, "Bearer"), (ForbiddenError, None)],
+)
+async def test_www_authenticate_header_only_on_401(
+    app: FastAPI,
+    client: AsyncClient,
+    error_class: type[DomainError],
+    expected_header: str | None,
+) -> None:
+    """401 responses announce the Bearer scheme; other errors do not."""
+    app.state.error = error_class("boom")
+    app.add_api_route("/raise", raise_stored_error)
+    response = await client.get("/raise")
+    assert response.headers.get("www-authenticate") == expected_header
