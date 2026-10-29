@@ -33,6 +33,7 @@ resource is permission-checked, so teams never see each other's data.
 - [API overview](#api-overview)
 - [Testing and quality](#testing-and-quality)
 - [Project structure](#project-structure)
+- [Known limitations](#known-limitations)
 - [Contributing](#contributing)
 - [License](#license)
 - [Authors and acknowledgements](#authors-and-acknowledgements)
@@ -66,6 +67,7 @@ resource is permission-checked, so teams never see each other's data.
 - Python 3.12
 - A PostgreSQL database
 - Docker (optional, for containers and the local test database)
+- `curl` and [`jq`](https://jqlang.org) for the usage example
 
 ### Installation
 
@@ -111,27 +113,46 @@ The container applies migrations on start. The API is available at
 
 ## Usage
 
-A short session with `curl`:
+The main scenario with `curl`, runnable as is against a fresh database: the owner
+creates a project and adds a member, the member creates a task and a comment and
+changes the status, then the owner removes the member.
 
 ```bash
-# 1. Register
-curl -X POST http://localhost:8000/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email": "ann@example.com", "password": "strongpass1", "full_name": "Ann"}'
+API=http://localhost:8000/api/v1
+JSON="Content-Type: application/json"
 
-# 2. Log in and keep the token
-TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email": "ann@example.com", "password": "strongpass1"}' | jq -r .access_token)
+# 1. Register the owner and the member, log both in
+curl -s -X POST $API/auth/register -H "$JSON" \
+  -d '{"email": "owner@example.com", "password": "ownerpass1", "full_name": "Olena"}'
+MEMBER_ID=$(curl -s -X POST $API/auth/register -H "$JSON" \
+  -d '{"email": "member@example.com", "password": "memberpass1", "full_name": "Bohdan"}' | jq .id)
+OWNER=$(curl -s -X POST $API/auth/login -H "$JSON" \
+  -d '{"email": "owner@example.com", "password": "ownerpass1"}' | jq -r .access_token)
+MEMBER=$(curl -s -X POST $API/auth/login -H "$JSON" \
+  -d '{"email": "member@example.com", "password": "memberpass1"}' | jq -r .access_token)
 
-# 3. Create a project
-curl -X POST http://localhost:8000/api/v1/projects \
-  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"name": "Website relaunch"}'
+# 2. Owner creates a project and adds the member
+PROJECT_ID=$(curl -s -X POST $API/projects -H "Authorization: Bearer $OWNER" -H "$JSON" \
+  -d '{"name": "Website relaunch"}' | jq .id)
+curl -s -X POST $API/projects/$PROJECT_ID/members -H "Authorization: Bearer $OWNER" -H "$JSON" \
+  -d "{\"user_id\": $MEMBER_ID}"
 
-# 4. List overdue high-priority tasks
-curl "http://localhost:8000/api/v1/projects/1/tasks?priority=high&overdue=true&limit=10" \
-  -H "Authorization: Bearer $TOKEN"
+# 3. Member creates a task assigned to themselves and comments on it
+TASK_ID=$(curl -s -X POST $API/projects/$PROJECT_ID/tasks -H "Authorization: Bearer $MEMBER" -H "$JSON" \
+  -d "{\"title\": \"Draft homepage\", \"priority\": \"high\", \"assignee_id\": $MEMBER_ID, \"due_at\": \"2030-01-01T12:00:00+02:00\"}" | jq .id)
+curl -s -X POST $API/tasks/$TASK_ID/comments -H "Authorization: Bearer $MEMBER" -H "$JSON" \
+  -d '{"body": "Started on the layout"}'
+
+# 4. Member moves the task to in_progress
+curl -s -X PATCH $API/tasks/$TASK_ID -H "Authorization: Bearer $MEMBER" -H "$JSON" \
+  -d '{"status": "in_progress"}'
+
+# 5. Owner removes the member: the task stays unassigned, the member loses access
+curl -s -o /dev/null -w "%{http_code}\n" -X DELETE \
+  $API/projects/$PROJECT_ID/members/$MEMBER_ID -H "Authorization: Bearer $OWNER"   # 204
+curl -s $API/tasks/$TASK_ID -H "Authorization: Bearer $OWNER" | jq .assignee_id     # null
+curl -s -o /dev/null -w "%{http_code}\n" \
+  $API/tasks/$TASK_ID -H "Authorization: Bearer $MEMBER"                            # 404
 ```
 
 <!-- Screenshot: a request and response in Swagger UI (save as docs/screenshots/request.png) -->
@@ -189,6 +210,7 @@ To run them against PostgreSQL, start the local test container:
 ```bash
 docker compose --profile test up -d test-db
 pytest --cov                     # uses TEST_DATABASE_URL if set
+pre-commit install               # run the hooks on every commit
 pre-commit run --all-files       # Ruff, mypy --strict, Gitleaks, empty-line check
 ```
 CI runs the same hooks, the test suite (coverage gate 80%) and a Docker build on every push.
@@ -211,6 +233,15 @@ tests/
 └── integration/
 ```
 
+## Known limitations
+
+- Access tokens stay valid until they expire; changing the password or deleting the account
+  does not revoke them early (a deleted user's token gets 401). There is no logout or refresh token.
+- Project ownership cannot be transferred; the owner can leave only by deleting the project.
+- Deleting an account also deletes the comments its user wrote.
+- The task list cannot filter for unassigned tasks (`assignee_id` accepts only a user id).
+- No rate limiting on login.
+
 ## Contributing
 
 1. Create a branch from `main`.
@@ -219,6 +250,10 @@ tests/
 4. Open a pull request with a short description of the change.
 
 Bug reports and ideas are welcome in [Issues](https://github.com/MariaLysiukq/Task-Tracker-API/issues).
+
+## License
+
+Released under the [MIT License](LICENSE).
 
 ## Authors and acknowledgements
 
