@@ -12,7 +12,7 @@
 - **Agent Actions:** Created layered package skeleton matching user's layout (api/, api/v1/, schemas/, models/, repositories/, services/, core/, _detail/). Generated boilerplate: pydantic-settings lazy config (SecretStr JWT key), Base model, business constants, utc_now() helper, async Alembic baseline (alembic.ini, env.py, template), and conftest.py test harness. No business logic or DB tables yet.
 - **Changed Files/Commit:** `app/**`, `alembic.ini`, `alembic/env.py`, `alembic/script.py.mako`, `alembic/versions/.gitkeep`, `tests/conftest.py`, `docs/ai-log.md`.
 - **Executed Checks:** Executed check routine requested by user: py_compile on new files, empty lines script, standard library sanity checks for utc_now.
-- **Student Conclusion:** I made sure we stuck to the strict folder structure. It goes api to services to repositories to models. We are using pydantic-settings to handle environment variables safely. And the JWT secret is locked down. Alembic is also ready to handle async database migrations for Postgres.  
+- **Student Conclusion:** I made sure we stuck to the strict folder structure. It goes api to services to repositories to models. We are using pydantic-settings to handle environment variables safely. And the JWT secret is locked down. Alembic is also ready to handle async database migrations for Postgres.
 
 ## 2026-10-27 — Plan §2: data model
 
