@@ -44,6 +44,6 @@ repos:
       - id: check-empty-lines
         name: Check empty lines in functions
         entry: python scripts/check_empty_lines.py
-        language: system
+        language: python
         types: [ python ]
         pass_filenames: true
