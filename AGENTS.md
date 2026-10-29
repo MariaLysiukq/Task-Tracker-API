@@ -55,13 +55,21 @@ Strictly use asynchronous DB drivers and syntax (async/await with asyncpg and As
 * All pre-commit hooks (Ruff, mypy --strict, Gitleaks, etc.) must pass locally and in CI . Allow `S101` only in the `tests/` directory.
 * Implement a custom local hook in `scripts/` via AST/tokenize to check for forbidden empty lines in functions. If code formatters (like Ruff format) conflict with the Empty Line Rule, priority is given to the Empty Line Rule inside function bodies.
 
+### Check commands
+Run from the repository root with the virtual environment activated:
+* `pre-commit install`: install the hooks once per clone
+* `pre-commit run --all-files`: Ruff lint and format, mypy --strict, Gitleaks, file checks, empty-line hook
+* `pytest --cov --cov-report=term-missing --cov-fail-under=80`: all tests with the CI coverage gate (SQLite in memory by default)
+* `docker compose --profile test up -d test-db` and `TEST_DATABASE_URL=postgresql+asyncpg://test:test@localhost:5433/task_tracker_test pytest`: tests against local PostgreSQL, including migration tests
+* `docker build -t task-tracker-api .`: verify the image builds
+
 ## 6. Execution Workflow
 You must strictly follow this sequential loop for all tasks :
 1. **Read requirements (ТЗ)**
 2. **Create a plan**
 3. **Execute a limited change**
 4. **Add tests** (Integration tests for endpoints; Unit tests for services/helpers)
-5. **Run checks** (Pre-commit, Pytest, Docker build)
+5. **Run checks** (Pre-commit, Pytest, Docker build; see "Check commands" in section 5)
 6. **Review diff**
 7. **WAIT FOR USER APPROVAL** before repeating the loop.
 
