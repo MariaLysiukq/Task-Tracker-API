@@ -24,7 +24,7 @@ async def make_task(session: AsyncSession) -> tuple[Task, User]:
     ann = await user_repo.create(
         session,
         email="ann@example.com",
-        hashed_password="hash",  # noqa: S106
+        hashed_password="hash",  # noqa: S106 - placeholder hash, not a secret
         full_name="Ann",
     )
     project = await project_repo.create(session, name="Alpha", description=None, owner_id=ann.id)

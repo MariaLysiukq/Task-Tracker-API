@@ -23,7 +23,7 @@ async def make_user(session: AsyncSession, email: str = "ann@example.com") -> Us
     User
         Flushed user.
     """
-    return await user_repo.create(session, email=email, hashed_password="hash", full_name="Ann")  # noqa: S106
+    return await user_repo.create(session, email=email, hashed_password="hash", full_name="Ann")  # noqa: S106 - placeholder hash, not a secret
 
 
 async def test_create_sets_id_and_aware_timestamps(db_session: AsyncSession) -> None:

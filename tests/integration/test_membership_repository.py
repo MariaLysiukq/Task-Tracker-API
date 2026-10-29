@@ -25,7 +25,7 @@ async def make_user(session: AsyncSession, email: str) -> User:
     User
         Flushed user.
     """
-    return await user_repo.create(session, email=email, hashed_password="hash", full_name="Ann")  # noqa: S106
+    return await user_repo.create(session, email=email, hashed_password="hash", full_name="Ann")  # noqa: S106 - placeholder hash, not a secret
 
 
 async def make_project(session: AsyncSession) -> tuple[Project, User]:
