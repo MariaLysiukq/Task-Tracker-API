@@ -46,6 +46,28 @@ async def test_register_invalid_payload_returns_422(
     assert (await client.post(REGISTER, json=payload)).status_code == 422
 
 
+@pytest.mark.parametrize(
+    ("url", "payload"),
+    [
+        (REGISTER, {**ANN, "password": "s3cr"}),
+        (LOGIN, ["ann@example.com", "Secret-Pass-1"]),
+        (LOGIN, {"email": "ann@example.com", "password": "Secret-Pass-1" * 20}),
+    ],
+    ids=["register-short-password", "login-non-object-body", "login-too-long-password"],
+)
+async def test_validation_error_does_not_echo_password(
+    client: AsyncClient,
+    url: str,
+    payload: Any,
+) -> None:
+    """422 responses describe the error without returning the submitted values."""
+    response = await client.post(url, json=payload)
+    assert response.status_code == 422
+    assert all("input" not in error for error in response.json()["detail"])
+    assert "s3cr" not in response.text
+    assert "Secret-Pass-1" not in response.text
+
+
 async def test_login_returns_bearer_token(client: AsyncClient) -> None:
     """Valid credentials (any email case) give a bearer token."""
     await client.post(REGISTER, json=ANN)
