@@ -48,6 +48,7 @@ resource is permission-checked, so teams never see each other's data.
 - Comments editable and deletable only by their author
 - Cascading deletes; removed members' tasks stay with `assignee_id = null`
 - Passwords stored as Argon2 hashes; all timestamps are timezone-aware UTC
+- Login and registration limited to 5 requests per minute per client IP (429 above that)
 
 ## Tech stack
 
@@ -199,6 +200,7 @@ All routes use the `/api/v1` prefix and, except registration and login, require
 | 404  | Not found, or not visible to you                                 |
 | 409  | Conflict (duplicate email or member, owner deleting account with projects) |
 | 422  | Invalid input                                                    |
+| 429  | Too many login or registration attempts; retry after `Retry-After` seconds |
 
 </details>
 
@@ -240,7 +242,9 @@ tests/
 - Project ownership cannot be transferred; the owner can leave only by deleting the project.
 - Deleting an account also deletes the comments its user wrote.
 - The task list cannot filter for unassigned tasks (`assignee_id` accepts only a user id).
-- No rate limiting on login.
+- The login/registration rate limit is kept in process memory: each Uvicorn worker counts
+  separately and counts reset on restart. Behind a reverse proxy, run Uvicorn with
+  `--proxy-headers --forwarded-allow-ips=<proxy IP>`, otherwise all clients share the proxy's limit.
 
 ## Contributing
 

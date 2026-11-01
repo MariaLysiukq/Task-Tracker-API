@@ -13,3 +13,8 @@ PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
 # RFC 7518 §3.2: an HS256 key must be at least as long as the hash output (32 bytes).
 JWT_SECRET_MIN_LENGTH = 32
+# Per client IP, separately for login and for registration.
+AUTH_RATE_LIMIT_REQUESTS = 5
+AUTH_RATE_LIMIT_WINDOW_SECONDS = 60
+# Upper bound on clients tracked by one limiter, so memory cannot grow without limit.
+RATE_LIMIT_MAX_TRACKED_KEYS = 10_000

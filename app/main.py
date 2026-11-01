@@ -8,9 +8,12 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app._detail.constants import AUTH_RATE_LIMIT_REQUESTS as LIMIT
+from app._detail.constants import AUTH_RATE_LIMIT_WINDOW_SECONDS as WINDOW
 from app.api.v1.router import api_router
 from app.core.config import get_settings
 from app.core.exceptions import DomainError
+from app.core.rate_limit import RateLimiter
 
 
 async def domain_error_handler(_: Request, error: DomainError) -> JSONResponse:
@@ -90,11 +93,14 @@ def create_app() -> FastAPI:
     Returns
     -------
     FastAPI
-        Application with ``/api/v1`` routes, error handlers and start-up settings check.
+        Application with ``/api/v1`` routes, error handlers, start-up settings check
+        and its own login/registration rate limiters.
     """
     app = FastAPI(title="Task Tracker API", version="0.1.0", lifespan=lifespan)
     app.exception_handler(DomainError)(domain_error_handler)
     app.exception_handler(RequestValidationError)(validation_error_handler)
+    app.state.login_limiter = RateLimiter(LIMIT, WINDOW)
+    app.state.register_limiter = RateLimiter(LIMIT, WINDOW)
     app.include_router(api_router)
     return app
 

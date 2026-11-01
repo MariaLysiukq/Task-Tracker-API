@@ -4,6 +4,8 @@ from typing import ClassVar
 
 from fastapi import status
 
+from app._detail.constants import AUTH_RATE_LIMIT_WINDOW_SECONDS
+
 
 class DomainError(Exception):
     """Base class for business-rule violations.
@@ -51,3 +53,10 @@ class InvalidDataError(DomainError):
     """Input is well-formed but violates a business rule."""
 
     status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+class TooManyRequestsError(DomainError):
+    """Client exceeded a rate limit; ``Retry-After`` gives the full window as an upper bound."""
+
+    status_code = status.HTTP_429_TOO_MANY_REQUESTS
+    headers = {"Retry-After": str(AUTH_RATE_LIMIT_WINDOW_SECONDS)}

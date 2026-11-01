@@ -3,7 +3,10 @@
 from typing import Any
 
 import pytest
-from httpx import AsyncClient
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+
+from app._detail.constants import AUTH_RATE_LIMIT_REQUESTS, AUTH_RATE_LIMIT_WINDOW_SECONDS
 
 REGISTER = "/api/v1/auth/register"
 LOGIN = "/api/v1/auth/login"
@@ -102,3 +105,33 @@ async def test_login_bad_credentials_returns_401(
 async def test_login_missing_password_returns_422(client: AsyncClient) -> None:
     """An incomplete body is invalid data."""
     assert (await client.post(LOGIN, json={"email": "ann@example.com"})).status_code == 422
+
+
+async def test_login_rate_limited_per_client(app: FastAPI, client: AsyncClient) -> None:
+    """After the limit even correct credentials get 429; registration and other IPs are unaffected."""
+    await client.post(REGISTER, json=ANN)
+    credentials = {"email": "ann@example.com", "password": "password123"}
+    wrong = {**credentials, "password": "wrong-password"}
+    for _ in range(AUTH_RATE_LIMIT_REQUESTS):
+        assert (await client.post(LOGIN, json=wrong)).status_code == 401
+    response = await client.post(LOGIN, json=credentials)
+    assert response.status_code == 429
+    assert response.json() == {"detail": "Too many requests, try again later"}
+    assert response.headers["retry-after"] == str(AUTH_RATE_LIMIT_WINDOW_SECONDS)
+    assert "access_token" not in response.text
+    bob = {**ANN, "email": "bob@example.com"}
+    assert (await client.post(REGISTER, json=bob)).status_code == 201
+    transport = ASGITransport(app=app, client=("10.0.0.2", 50000))
+    async with AsyncClient(transport=transport, base_url="http://test") as other:
+        assert (await other.post(LOGIN, json=credentials)).status_code == 200
+
+
+async def test_register_rate_limited_counts_invalid_requests(client: AsyncClient) -> None:
+    """Invalid and duplicate registrations count toward the limit too."""
+    await client.post(REGISTER, json=ANN)
+    await client.post(REGISTER, json={"email": "bad"})
+    for _ in range(AUTH_RATE_LIMIT_REQUESTS - 2):
+        await client.post(REGISTER, json=ANN)
+    response = await client.post(REGISTER, json={**ANN, "email": "new@example.com"})
+    assert response.status_code == 429
+    assert response.headers["retry-after"] == str(AUTH_RATE_LIMIT_WINDOW_SECONDS)
