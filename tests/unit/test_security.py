@@ -15,6 +15,9 @@ from app.core.security import (
     verify_password,
 )
 
+# Valid length (no InsecureKeyLengthWarning) but not the configured secret.
+OTHER_KEY = "other-secret-key-for-hs256-at-least-32-chars"
+
 
 def test_hash_is_salted_and_verifiable() -> None:
     """Hashes differ per call, verify the right password and reject a wrong one."""
@@ -70,7 +73,7 @@ def make_token(settings: Settings, payload: dict[str, object], key: str | None =
     ("payload", "key"),
     [
         ({"sub": "1", "exp": utc_now() - timedelta(seconds=1)}, None),
-        ({"sub": "1", "exp": utc_now() + timedelta(minutes=5)}, "other-secret"),
+        ({"sub": "1", "exp": utc_now() + timedelta(minutes=5)}, OTHER_KEY),
         ({"exp": utc_now() + timedelta(minutes=5)}, None),
         ({"sub": "1"}, None),
         ({"sub": "abc", "exp": utc_now() + timedelta(minutes=5)}, None),

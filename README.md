@@ -90,7 +90,7 @@ cp .env.example .env
 | Variable             | Description                                       | Default |
 |----------------------|---------------------------------------------------|---------|
 | `DATABASE_URL`       | Async URL, `postgresql+asyncpg://...?ssl=require` | -       |
-| `JWT_SECRET`         | Secret key used to sign tokens                    | -       |
+| `JWT_SECRET`         | Secret key used to sign tokens, at least 32 chars | -       |
 | `JWT_ALGORITHM`      | Token signing algorithm                           | `HS256` |
 | `JWT_EXPIRE_MINUTES` | Token lifetime in minutes                         | `30`    |
 | `TEST_DATABASE_URL`  | Separate database for tests (optional)            | SQLite in memory |

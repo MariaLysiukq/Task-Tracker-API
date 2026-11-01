@@ -40,7 +40,7 @@ def settings(monkeypatch: pytest.MonkeyPatch) -> Iterator[Settings]:
         Settings built from the patched environment.
     """
     monkeypatch.setenv("DATABASE_URL", TEST_DB_URL)
-    monkeypatch.setenv("JWT_SECRET", "test-secret")
+    monkeypatch.setenv("JWT_SECRET", "test-secret-key-for-hs256-at-least-32-chars")
     monkeypatch.setenv("JWT_ALGORITHM", "HS256")
     monkeypatch.setenv("JWT_EXPIRE_MINUTES", "30")
     get_settings.cache_clear()

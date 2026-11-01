@@ -41,7 +41,7 @@ def migrated_db(monkeypatch_module: pytest.MonkeyPatch) -> Iterator[str]:
     """
     assert TEST_DATABASE_URL
     monkeypatch_module.setenv("DATABASE_URL", TEST_DATABASE_URL)
-    monkeypatch_module.setenv("JWT_SECRET", "test-secret")
+    monkeypatch_module.setenv("JWT_SECRET", "test-secret-key-for-hs256-at-least-32-chars")
     get_settings.cache_clear()
     config = Config("alembic.ini")
     command.downgrade(config, "base")

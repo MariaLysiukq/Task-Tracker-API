@@ -3,7 +3,9 @@
 import pytest
 from fastapi import FastAPI, Request
 from httpx import AsyncClient
+from pydantic import ValidationError
 
+from app.core.config import Settings, get_settings
 from app.core.exceptions import (
     ConflictError,
     DomainError,
@@ -12,6 +14,7 @@ from app.core.exceptions import (
     NotFoundError,
     UnauthorizedError,
 )
+from app.main import create_app, lifespan
 
 
 async def raise_stored_error(request: Request) -> None:
@@ -76,3 +79,20 @@ async def test_www_authenticate_header_only_on_401(
     app.add_api_route("/raise", raise_stored_error)
     response = await client.get("/raise")
     assert response.headers.get("www-authenticate") == expected_header
+
+
+async def test_startup_succeeds_with_valid_settings(settings: Settings) -> None:
+    """The lifespan check passes with a valid configuration."""
+    async with lifespan(create_app()):
+        pass
+
+
+async def test_startup_fails_with_short_jwt_secret(
+    settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The server refuses to start when ``JWT_SECRET`` is too short."""
+    monkeypatch.setenv("JWT_SECRET", "short")
+    get_settings.cache_clear()
+    with pytest.raises(ValidationError):
+        async with lifespan(create_app()):
+            pass
