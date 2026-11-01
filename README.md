@@ -141,8 +141,8 @@ kept per tab.
   <img src="docs/screenshots/web-board.png" alt="Task board with To do, In progress and Done columns" width="800" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/web-task.png" alt="Task editor with comments open beside the board" width="560" />
-  <img src="docs/screenshots/web-mobile-dark.png" alt="Board on a phone in dark mode, columns shown as tabs" width="220" />
+  <img src="docs/screenshots/web-task.png" alt="Task editor with comments open beside the board" width="464" height="290" />
+  <img src="docs/screenshots/web-mobile-dark.png" alt="Board on a phone in dark mode, columns shown as tabs" width="314" height="290" />
 </p>
 
 ### API with curl
