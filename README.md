@@ -51,8 +51,10 @@ client served at `/` puts the same API behind a task board.
 - Cascading deletes; removed members' tasks stay with `assignee_id = null`
 - Passwords stored as Argon2 hashes; all timestamps are timezone-aware UTC
 - Login and registration limited to 5 requests per minute per client IP (429 above that)
-- Web client at `/` (`frontend/index.html`, no build step): sign in, projects, members,
+- Web client at `/` (`frontend/`, no build step): sign in, projects, members,
   a task board by status, a task editor and comments
+- Security headers: `nosniff` and `no-referrer` on every response; the web client page adds a
+  strict Content-Security-Policy (same origin only, no inline code, no framing)
 
 ## Tech stack
 
@@ -121,9 +123,10 @@ The container applies migrations on start. The web client is at
 
 ### Web client
 
-Open <http://localhost:8000> after starting the server. The page is a single file,
-`frontend/index.html` (HTML, CSS and JavaScript, no build step), and calls `/api/v1` from
-the same origin, so no CORS setup is needed.
+Open <http://localhost:8000> after starting the server. The client is plain HTML, CSS and
+JavaScript with no build step: `frontend/index.html` plus `frontend/static/` (`app.css`,
+`app.js` and the self-hosted IBM Plex fonts, SIL Open Font License). It calls `/api/v1` from
+the same origin, so no CORS setup is needed, and loads nothing from third-party servers.
 
 - Register or sign in. The top bar shows your user ID; share it so an owner can add you.
 - Create a project in the left sidebar; the owner can rename, describe or delete it and
@@ -262,7 +265,7 @@ app/
 ├── schemas/        # Pydantic schemas
 ├── core/           # Config, database, security, errors
 └── _detail/        # Constants and helpers
-frontend/           # Web client (index.html)
+frontend/           # Web client: index.html, static/ (app.css, app.js, fonts)
 alembic/            # Migrations
 scripts/            # Custom pre-commit hooks
 tests/

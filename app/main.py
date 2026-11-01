@@ -1,12 +1,13 @@
 """Application entry point."""
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app._detail.constants import AUTH_RATE_LIMIT_REQUESTS as LIMIT
 from app._detail.constants import AUTH_RATE_LIMIT_WINDOW_SECONDS as WINDOW
@@ -65,6 +66,33 @@ async def validation_error_handler(_: Request, error: RequestValidationError) ->
     )
 
 
+async def add_security_headers(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response:
+    """Add headers that every response should carry.
+
+    ``nosniff`` stops browsers from guessing a content type (for example running
+    a JSON body as a script); ``no-referrer`` keeps URLs out of third-party requests.
+
+    Parameters
+    ----------
+    request : Request
+        Incoming request.
+    call_next : Callable[[Request], Awaitable[Response]]
+        Next handler in the chain.
+
+    Returns
+    -------
+    Response
+        The handler's response with the extra headers.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     """Validate settings at server start-up instead of on the first request.
@@ -94,16 +122,19 @@ def create_app() -> FastAPI:
     Returns
     -------
     FastAPI
-        Application with ``/api/v1`` routes, the web client at ``/``, error handlers,
-        start-up settings check and its own login/registration rate limiters.
+        Application with ``/api/v1`` routes, the web client at ``/`` and its assets
+        at ``/static``, security headers, error handlers, start-up settings check and
+        its own login/registration rate limiters.
     """
     app = FastAPI(title="Task Tracker API", version="0.1.0", lifespan=lifespan)
+    app.middleware("http")(add_security_headers)
     app.exception_handler(DomainError)(domain_error_handler)
     app.exception_handler(RequestValidationError)(validation_error_handler)
     app.state.login_limiter = RateLimiter(LIMIT, WINDOW)
     app.state.register_limiter = RateLimiter(LIMIT, WINDOW)
     app.include_router(api_router)
     app.include_router(frontend.router)
+    app.mount("/static", StaticFiles(directory=frontend.STATIC_DIR), name="static")
     return app
 
 
