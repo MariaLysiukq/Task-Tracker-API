@@ -137,6 +137,14 @@ the same origin, so no CORS setup is needed.
 To try two users at once, sign in as each one in a separate browser tab: the session is
 kept per tab.
 
+<p align="center">
+  <img src="docs/screenshots/web-board.png" alt="Task board with To do, In progress and Done columns" width="800" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/web-task.png" alt="Task editor with comments open beside the board" width="560" />
+  <img src="docs/screenshots/web-mobile-dark.png" alt="Board on a phone in dark mode, columns shown as tabs" width="220" />
+</p>
+
 ### API with curl
 
 The main scenario with `curl`, runnable as is against a fresh database: the owner
