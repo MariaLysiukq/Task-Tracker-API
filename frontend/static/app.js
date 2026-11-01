@@ -12,6 +12,7 @@ const state = {
   token: store.get("tt.token"), me: null, projects: [], project: null, members: [],
   tasks: [], total: 0, filters: { priority: "", assignee_id: "", overdue: "", order: "desc" },
   task: null, comments: [], commentsTotal: 0, editingComment: null, editingProject: false, column: "todo",
+  counts: {},
 };
 const $ = (id) => document.getElementById(id);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -142,6 +143,9 @@ function signOut(message) {
   state.token = null;
   state.me = null;
   state.project = null;
+  state.projects = [];
+  state.counts = {};
+  $("progress").replaceChildren();
   store.set("tt.token", null);
   showAuth();
   if (message) notify(message, "info");
@@ -169,6 +173,7 @@ async function loadProjects(preferredId) {
   const next = state.projects.find((p) => p.id === preferredId) || state.projects[0] || null;
   if (next) await selectProject(next.id);
   else { state.project = null; renderProjects(); renderProjectView(); }
+  guard(loadAllCounts)();
 }
 async function selectProject(id) {
   state.project = state.projects.find((p) => p.id === id) || null;
@@ -176,16 +181,73 @@ async function selectProject(id) {
   Object.assign(state.filters, { priority: "", assignee_id: "", overdue: "" });
   store.set("tt.project", id);
   renderProjects();
-  const [members] = await Promise.all([api("GET", `/projects/${id}/members?limit=100`), loadTasks(false)]);
+  const [members, counts] = await Promise.all([api("GET", `/projects/${id}/members?limit=100`), fetchCounts(id), loadTasks(false)]);
   state.members = members.items;
   state.membersTotal = members.total;
+  state.counts[id] = counts;
+  $("progress").replaceChildren();
+  renderProjects();
   renderProjectView();
+}
+
+/* Progress: unfiltered task counts per status, for the rail and the sidebar */
+async function fetchCounts(projectId) {
+  const totals = await Promise.all(STATUSES.map(([status]) =>
+    api("GET", `/projects/${projectId}/tasks?status=${status}&limit=1`).then((page) => [status, page.total])));
+  return Object.fromEntries(totals);
+}
+async function loadAllCounts() {
+  const missing = state.projects.filter((p) => !state.counts[p.id]);
+  for (let i = 0; i < missing.length; i += 5) {
+    const chunk = missing.slice(i, i + 5);
+    const results = await Promise.all(chunk.map((p) => fetchCounts(p.id)));
+    chunk.forEach((p, k) => { state.counts[p.id] = results[k]; });
+    renderProjects();
+  }
+}
+function countTotal(c) { return STATUSES.reduce((sum, [status]) => sum + c[status], 0); }
+function bumpCount(from, to) {
+  const c = state.project && state.counts[state.project.id];
+  if (!c) return;
+  if (from) c[from] = Math.max(0, c[from] - 1);
+  if (to) c[to] += 1;
+  renderProgress();
+  renderProjects();
+}
+function railSegments(c, cls) {
+  return h("span", { class: cls, "aria-hidden": "true" }, STATUSES.map(([status]) => {
+    const seg = h("span", { class: `seg seg-${status}` });
+    seg.style.flexGrow = String(c ? c[status] : 0);
+    return seg;
+  }));
+}
+function renderProgress() {
+  const box = $("progress");
+  const c = state.counts[state.project.id];
+  if (!c) { box.replaceChildren(); return; }
+  const total = countTotal(c);
+  if (!box.firstChild) {
+    box.append(railSegments(c, "rail"), h("div", { class: "rail-text" }, h("strong", { class: "rail-done mono" }), h("span", { class: "rail-legend" })));
+  }
+  const rail = box.querySelector(".rail");
+  for (const [status] of STATUSES) rail.querySelector(`.seg-${status}`).style.flexGrow = String(c[status]);
+  rail.classList.toggle("is-empty", total === 0);
+  rail.classList.toggle("is-complete", total > 0 && c.done === total);
+  box.setAttribute("role", "img");
+  box.setAttribute("aria-label", total
+    ? `${c.done} of ${total} tasks done: ${c.todo} to do, ${c.in_progress} in progress.`
+    : "No tasks yet.");
+  box.querySelector(".rail-done").textContent = total ? `${c.done}/${total} done` : "No tasks yet";
+  box.querySelector(".rail-legend").replaceChildren(...STATUSES.map(([status, text]) =>
+    h("span", { class: "legend-item" }, h("span", { class: `swatch seg-${status}` }), `${text} ${c[status]}`)));
 }
 function renderProjects() {
   const list = $("project-list");
   list.replaceChildren(...state.projects.map((p) => h("li", {},
     h("button", { type: "button", "aria-current": state.project && p.id === state.project.id ? "true" : "false",
-      onclick: guard(() => selectProject(p.id)) }, p.name))));
+      onclick: guard(() => selectProject(p.id)) },
+      h("span", { class: "project-name" }, p.name),
+      state.counts[p.id] && countTotal(state.counts[p.id]) > 0 && railSegments(state.counts[p.id], "rail mini")))));
   if (!state.projects.length) list.append(h("li", { class: "muted" }, "No projects yet."));
 }
 function renderProjectView() {
@@ -193,6 +255,7 @@ function renderProjectView() {
   $("project-view").hidden = !state.project;
   if (!state.project) return;
   renderProjectHead();
+  renderProgress();
   renderMembers();
   renderFilters();
   renderBoard();
@@ -389,6 +452,7 @@ async function moveTask(task, status) {
   const updated = await api("PATCH", `/tasks/${task.id}`, { status });
   replaceTask(updated);
   renderBoard();
+  bumpCount(task.status, updated.status);
   if (!slideCard(before, updated.id)) notify(`"${updated.title}" moved to ${labelOf(STATUSES, status)}.`, "info");
 }
 $("new-task").addEventListener("submit", formHandler(async (form, data) => {
@@ -397,6 +461,7 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
   if (due) body.due_at = due;
   if (data.get("assignee_id")) body.assignee_id = Number(data.get("assignee_id"));
   const created = await api("POST", `/projects/${state.project.id}/tasks`, body);
+  bumpCount(null, created.status);
   form.reset();
   await loadTasks(false);
   state.column = "todo";
@@ -464,6 +529,7 @@ async function saveTask(data) {
   if (data.get("due_at") !== toLocalInput(t.due_at)) changes.due_at = fromLocalInput(data.get("due_at"));
   if (!Object.keys(changes).length) { notify("Nothing changed.", "info"); return; }
   const updated = await api("PATCH", `/tasks/${t.id}`, changes);
+  if (updated.status !== t.status) bumpCount(t.status, updated.status);
   replaceTask(updated);
   state.task = updated;
   renderBoard();
@@ -474,6 +540,7 @@ async function deleteTask() {
   const t = state.task;
   if (!confirm(`Delete "${t.title}" and its comments? This cannot be undone.`)) return;
   await api("DELETE", `/tasks/${t.id}`);
+  bumpCount(t.status, null);
   state.tasks = state.tasks.filter((x) => x.id !== t.id);
   state.total -= 1;
   closeTask();

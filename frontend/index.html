@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Task Tracker</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
 <script src="/static/app.js" defer></script>
 </head>
@@ -11,7 +12,7 @@
 <section id="auth" hidden>
   <div class="auth-panel">
     <div class="stack">
-      <h1>Task Tracker</h1>
+      <h1 class="auth-title"><svg class="mark" viewBox="0 0 24 24" width="40" height="40" aria-hidden="true"><g transform="rotate(-90 12 12)"><circle class="mark-arc mark-todo" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="0"/><circle class="mark-arc mark-in_progress" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-33.33"/><circle class="mark-arc mark-done" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-66.67"/></g><path class="mark-check" d="M8.4 12.3l2.5 2.5 4.8-5.1"/></svg>Task Tracker</h1>
       <p class="muted">Projects, tasks and the conversations around them, in one place.</p>
     </div>
     <div class="auth-switch" role="group" aria-label="Account">
@@ -35,7 +36,7 @@
 
 <div id="app" hidden>
   <header class="topbar">
-    <span class="wordmark">Task Tracker</span>
+    <span class="wordmark"><svg class="mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g transform="rotate(-90 12 12)"><circle class="mark-arc mark-todo" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="0"/><circle class="mark-arc mark-in_progress" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-33.33"/><circle class="mark-arc mark-done" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-66.67"/></g><path class="mark-check" d="M8.4 12.3l2.5 2.5 4.8-5.1"/></svg>Task Tracker</span>
     <div class="whoami">
       <span id="me-name"></span>
       <span class="mono muted" id="me-id" title="Share this ID so a project owner can add you"></span>
@@ -59,6 +60,7 @@
       <div id="project-view" hidden>
         <div class="stack loose">
           <div class="project-head" id="project-head"></div>
+          <div class="progress" id="progress"></div>
           <details class="members" id="members"></details>
           <div class="toolbar">
             <form class="new-task" id="new-task">
