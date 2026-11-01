@@ -68,21 +68,21 @@ label > input, label > select, label > textarea { color: var(--ink); font-size: 
 .auth-switch { display: flex; gap: 0.25rem; border-bottom: 1px solid var(--rule); }
 .auth-switch button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 0.5rem 0.25rem; margin-right: 1rem; color: var(--muted); }
 .auth-switch button[aria-pressed="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
-.stack { display: grid; gap: 0.85rem; }
+.stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.85rem; }
 
 /* App shell */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--rule); }
 .wordmark { font-weight: 600; }
 .whoami { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end; }
 .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100vh - 57px); }
-.sidebar { border-right: 1px solid var(--rule); padding: 1.25rem; display: grid; align-content: start; gap: 1rem; }
+.sidebar { border-right: 1px solid var(--rule); padding: 1.25rem; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1rem; min-width: 0; }
 .project-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
 .project-list button { width: 100%; text-align: left; border: 0; background: none; padding: 0.45rem 0.6rem; overflow-wrap: anywhere; }
 .project-list button:hover { background: var(--surface); }
 .project-list button[aria-current="true"] { background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); font-weight: 500; }
 .inline-form { display: flex; gap: 0.4rem; }
-.inline-form input { flex: 1; }
-main { padding: 1.5rem 1.75rem 3rem; display: grid; gap: 1.25rem; align-content: start; min-width: 0; }
+.inline-form input { flex: 1 1 0; width: 0; }
+main { padding: 1.5rem 1.75rem 3rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-content: start; min-width: 0; }
 .project-head { display: grid; gap: 0.5rem; }
 .project-head .row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
 .project-head p { max-width: 70ch; overflow-wrap: anywhere; white-space: pre-wrap; }
