@@ -52,7 +52,7 @@ async def validation_error_handler(_: Request, error: RequestValidationError) ->
         {key: value for key, value in item.items() if key != "input"} for item in error.errors()
     ]
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content={"detail": jsonable_encoder(errors)},
     )
 

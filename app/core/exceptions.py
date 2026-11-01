@@ -50,4 +50,4 @@ class ConflictError(DomainError):
 class InvalidDataError(DomainError):
     """Input is well-formed but violates a business rule."""
 
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
