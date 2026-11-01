@@ -40,7 +40,8 @@ async def test_index_has_no_inline_code_or_external_sources(client: AsyncClient)
     [
         ("/static/app.js", "text/javascript"),
         ("/static/app.css", "text/css"),
-        ("/static/fonts/ibm-plex-sans-latin-400-normal.woff2", "font/woff2"),
+        ("/static/theme.js", "text/javascript"),
+        ("/static/fonts/inter-latin-400-normal.woff2", "font/woff2"),
     ],
 )
 async def test_static_assets_are_served(client: AsyncClient, path: str, content_type: str) -> None:
@@ -49,6 +50,45 @@ async def test_static_assets_are_served(client: AsyncClient, path: str, content_
     assert response.status_code == 200
     assert response.headers["content-type"].startswith(content_type)
     assert response.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_every_stylesheet_font_is_served(client: AsyncClient) -> None:
+    """Each ``url()`` in ``app.css`` resolves to a self-hosted font file."""
+    css = (await client.get("/static/app.css")).text
+    urls = re.findall(r'url\("([^"]+)"\)', css)
+    assert urls
+    assert all(url.startswith("fonts/") for url in urls)
+    for url in urls:
+        response = await client.get(f"/static/{url}")
+        assert response.status_code == 200, url
+        assert response.headers["content-type"].startswith("font/woff2")
+
+
+async def test_theme_is_applied_before_first_paint(client: AsyncClient) -> None:
+    """Dark is the default, and the saved theme is set by a blocking script in ``<head>``."""
+    html = (await client.get("/")).text
+    head = html.split("</head>", 1)[0]
+    assert '<html lang="en" data-theme="dark">' in html
+    assert '<script src="/static/theme.js"></script>' in head
+    script = (await client.get("/static/theme.js")).text
+    assert 'localStorage.getItem("tt.theme")' in script
+    for choice in ("system", "light", "dark"):
+        assert f'data-theme-choice="{choice}"' in html
+
+
+@pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
+async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
+    """The page and its assets are never reused from cache without a check."""
+    response = await client.get(path)
+    assert response.headers["cache-control"] == "no-cache"
+
+
+async def test_unchanged_asset_returns_not_modified(client: AsyncClient) -> None:
+    """Revalidation with the ETag costs a 304, not the whole file."""
+    first = await client.get("/static/app.css")
+    second = await client.get("/static/app.css", headers={"If-None-Match": first.headers["etag"]})
+    assert second.status_code == 304
+    assert second.headers["cache-control"] == "no-cache"
 
 
 async def test_app_script_calls_api_v1(client: AsyncClient) -> None:

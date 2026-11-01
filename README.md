@@ -125,8 +125,9 @@ The container applies migrations on start. The web client is at
 
 Open <http://localhost:8000> after starting the server. The client is plain HTML, CSS and
 JavaScript with no build step: `frontend/index.html` plus `frontend/static/` (`app.css`,
-`app.js` and the self-hosted IBM Plex fonts, SIL Open Font License). It calls `/api/v1` from
-the same origin, so no CORS setup is needed, and loads nothing from third-party servers.
+`app.js`, `theme.js` and the self-hosted Inter and IBM Plex Mono fonts, SIL Open Font
+License). It calls `/api/v1` from the same origin, so no CORS setup is needed, and loads
+nothing from third-party servers.
 
 - Register or sign in. The top bar shows your user ID; share it so an owner can add you.
 - Create a project in the left sidebar; the owner can rename, describe or delete it and
@@ -135,7 +136,8 @@ the same origin, so no CORS setup is needed, and loads nothing from third-party 
   and Done; **Start**, **Mark done** and **Reopen** move a card to the next column.
 - Filter by priority, assignee and overdue, and sort newest or oldest first.
 - Click a task title to edit every field, delete the task, or read and write comments.
-- Works on phones (columns become tabs), in dark mode and with the keyboard.
+- Dark by default; switch between System, Light and Dark at the bottom of the sidebar.
+- Works on phones (columns become tabs) and with the keyboard.
 
 To try two users at once, sign in as each one in a separate browser tab: the session is
 kept per tab.

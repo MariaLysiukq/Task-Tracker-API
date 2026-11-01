@@ -7,7 +7,6 @@ from fastapi import FastAPI, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 
 from app._detail.constants import AUTH_RATE_LIMIT_REQUESTS as LIMIT
 from app._detail.constants import AUTH_RATE_LIMIT_WINDOW_SECONDS as WINDOW
@@ -134,7 +133,9 @@ def create_app() -> FastAPI:
     app.state.register_limiter = RateLimiter(LIMIT, WINDOW)
     app.include_router(api_router)
     app.include_router(frontend.router)
-    app.mount("/static", StaticFiles(directory=frontend.STATIC_DIR), name="static")
+    app.mount(
+        "/static", frontend.RevalidatedStaticFiles(directory=frontend.STATIC_DIR), name="static"
+    )
     return app
 
 

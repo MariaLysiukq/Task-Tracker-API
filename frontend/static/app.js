@@ -595,6 +595,23 @@ async function deleteComment(id) {
   renderSheet();
 }
 
+/* Theme: "system", "light" or "dark"; theme.js applies the saved choice before first paint */
+function renderThemeSwitch() {
+  const current = document.documentElement.dataset.theme;
+  for (const button of document.querySelectorAll("[data-theme-choice]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.themeChoice === current));
+  }
+}
+function setTheme(choice) {
+  document.documentElement.dataset.theme = choice;
+  try { localStorage.setItem("tt.theme", choice); } catch { /* storage unavailable */ }
+  renderThemeSwitch();
+}
+for (const button of document.querySelectorAll("[data-theme-choice]")) {
+  button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
+}
+renderThemeSwitch();
+
 /* Wiring */
 $("show-login").addEventListener("click", () => setAuthMode(false));
 $("show-register").addEventListener("click", () => setAuthMode(true));

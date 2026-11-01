@@ -1,11 +1,12 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Task Tracker</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/app.css">
+<script src="/static/theme.js"></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -51,6 +52,11 @@
         <input name="name" placeholder="New project" aria-label="New project name" maxlength="100" required>
         <button type="submit">Create</button>
       </form>
+      <div class="theme-switch" role="group" aria-label="Theme">
+        <button type="button" data-theme-choice="system" aria-pressed="false">System</button>
+        <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
+        <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
+      </div>
     </aside>
     <main id="main">
       <div id="no-project" class="empty-state" hidden>
