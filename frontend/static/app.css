@@ -61,6 +61,8 @@ label > input, label > select, label > textarea { color: var(--ink); font-size: 
 #notice { position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%); max-width: min(560px, calc(100% - 32px)); padding: 0.6rem 0.9rem; border-radius: 6px; background: var(--ink); color: var(--bg); z-index: 10; }
 #notice.error { background: var(--overdue); color: #FFFFFF; }
 #notice:empty { display: none; }
+#notice .notice-action { color: inherit; font-weight: 600; margin-left: 0.5rem; }
+.filter-status { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; flex-wrap: wrap; padding: 0.5rem 0.75rem; border-radius: 6px; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); font-size: 0.9rem; }
 
 /* Sign-in */
 #auth { min-height: 100vh; display: grid; place-items: center; padding: 1rem; }
@@ -89,7 +91,7 @@ label > input, label > select, label > textarea { color: var(--ink); font-size: 
 .inline-form input { flex: 1 1 0; width: 0; }
 main { padding: 1.5rem 1.75rem 3rem; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.25rem; align-content: start; min-width: 0; }
 .project-head { display: grid; gap: 0.5rem; }
-.project-head .row { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.project-head .row { display: flex; align-items: center; gap: 0.5rem 1.25rem; flex-wrap: wrap; }
 .project-head p { max-width: 70ch; overflow-wrap: anywhere; white-space: pre-wrap; }
 .actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
 details.members { border: 1px solid var(--rule); border-radius: 8px; padding: 0.6rem 0.9rem; background: var(--surface); }
@@ -117,6 +119,8 @@ details.members summary { cursor: pointer; font-weight: 500; }
 .column[data-status="done"] .card-title { color: var(--muted); }
 .card-meta { display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; font-size: 0.82rem; color: var(--muted); }
 .card-move { justify-self: start; font-size: 0.82rem; padding: 0.2rem 0.6rem; }
+.card.is-new { animation: card-new 1.8s ease-out; }
+@keyframes card-new { from { background: color-mix(in srgb, var(--accent) 22%, var(--surface)); border-color: var(--accent); } }
 .overdue { color: var(--overdue); font-weight: 500; }
 .column-empty { color: var(--muted); font-size: 0.9rem; padding: 0.5rem 0; }
 
@@ -147,5 +151,6 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
   .field-row { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
+  .card.is-new { animation: none; border-color: var(--accent); }
   * { scroll-behavior: auto !important; }
 }

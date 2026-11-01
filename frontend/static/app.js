@@ -46,12 +46,14 @@ const personName = (id) => (state.me && id === state.me.id ? "You" : `User #${id
 const isOwner = () => state.project && state.me && state.project.owner_id === state.me.id;
 
 let noticeTimer = null;
-function notify(message, kind = "error") {
+function notify(message, kind = "error", action = null) {
   const el = $("notice");
   el.className = kind;
-  el.textContent = message;
+  const button = action && h("button", { type: "button", class: "link notice-action",
+    onclick: guard(async () => { el.replaceChildren(); await action.run(); }) }, action.label);
+  el.replaceChildren(...[message, button].filter(Boolean));
   clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => { el.textContent = ""; }, 6000);
+  noticeTimer = setTimeout(() => { el.replaceChildren(); }, action ? 10000 : 6000);
 }
 
 class ApiError extends Error {
@@ -171,6 +173,7 @@ async function loadProjects(preferredId) {
 async function selectProject(id) {
   state.project = state.projects.find((p) => p.id === id) || null;
   state.editingProject = false;
+  Object.assign(state.filters, { priority: "", assignee_id: "", overdue: "" });
   store.set("tt.project", id);
   renderProjects();
   const [members] = await Promise.all([api("GET", `/projects/${id}/members?limit=100`), loadTasks(false)]);
@@ -222,13 +225,18 @@ function renderProjectHead() {
     form.querySelector("input").focus();
     return;
   }
+  const owner = isOwner();
+  const edit = () => { state.editingProject = true; renderProjectHead(); };
+  let description = h("p", { class: "muted" }, "No description.");
+  if (p.description) description = h("p", {}, p.description);
+  else if (owner) description = h("p", { class: "muted" }, "No description yet. ", h("button", { type: "button", class: "link", onclick: edit }, "Add a description"));
   head.replaceChildren(
     h("div", { class: "row" },
       h("h1", {}, p.name),
-      isOwner() && h("div", { class: "actions" },
-        h("button", { type: "button", onclick: () => { state.editingProject = true; renderProjectHead(); } }, "Edit project"),
+      owner && h("div", { class: "actions" },
+        h("button", { type: "button", onclick: edit }, "Edit name and description"),
         h("button", { type: "button", class: "danger", onclick: guard(deleteProject) }, "Delete project"))),
-    p.description ? h("p", {}, p.description) : h("p", { class: "muted" }, "No description."));
+    description);
 }
 async function deleteProject() {
   const p = state.project;
@@ -300,6 +308,29 @@ function renderFilters() {
     h("label", {}, "Assignee", select("assignee_id", [["", "Anyone"], ...memberOptions()], f.assignee_id, { onchange: onChange("assignee_id") })),
     h("label", {}, "Due", select("overdue", [["", "Any"], ["true", "Overdue only"], ["false", "Not overdue"]], f.overdue, { onchange: onChange("overdue") })),
     h("label", {}, "Order", select("order", [["desc", "Newest first"], ["asc", "Oldest first"]], f.order, { onchange: onChange("order") })));
+  renderNewTaskAssignee();
+}
+function renderNewTaskAssignee() {
+  const el = $("new-task-assignee");
+  const options = [["", "Unassigned"], ...memberOptions()];
+  const previous = el.value;
+  el.replaceChildren(...options.map(([v, text]) => h("option", { value: v }, text)));
+  el.value = options.some(([v]) => v === previous) ? previous : "";
+}
+const filtersActive = () => Boolean(state.filters.priority || state.filters.assignee_id || state.filters.overdue);
+async function clearFilters() {
+  Object.assign(state.filters, { priority: "", assignee_id: "", overdue: "" });
+  await loadTasks(false);
+  renderFilters();
+  renderBoard();
+}
+function renderFilterStatus() {
+  const box = $("filter-status");
+  box.hidden = !filtersActive();
+  if (box.hidden) { box.replaceChildren(); return; }
+  const n = state.total;
+  const text = n ? `Filters on: ${n} matching ${n === 1 ? "task" : "tasks"}. Tasks that don't match are hidden.` : "No tasks match the current filters.";
+  box.replaceChildren(h("span", {}, text), h("button", { type: "button", onclick: guard(clearFilters) }, "Clear filters"));
 }
 function taskCard(t) {
   const overdue = isOverdue(t);
@@ -313,6 +344,7 @@ function taskCard(t) {
     h("button", { type: "button", class: "card-move", onclick: guard(() => moveTask(t, nextStatus)) }, nextLabel));
 }
 function renderBoard() {
+  renderFilterStatus();
   const tabs = STATUSES.map(([status, text]) => {
     const count = state.tasks.filter((t) => t.status === status).length;
     return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
@@ -363,12 +395,23 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
   const body = { title: data.get("title"), priority: data.get("priority") };
   const due = fromLocalInput(data.get("due_at"));
   if (due) body.due_at = due;
-  await api("POST", `/projects/${state.project.id}/tasks`, body);
+  if (data.get("assignee_id")) body.assignee_id = Number(data.get("assignee_id"));
+  const created = await api("POST", `/projects/${state.project.id}/tasks`, body);
   form.reset();
   await loadTasks(false);
   state.column = "todo";
   renderBoard();
   form.querySelector("input").focus();
+  const card = $("board").querySelector(`.card[data-id="${created.id}"]`);
+  if (card) {
+    card.classList.add("is-new");
+    card.scrollIntoView({ block: "nearest", behavior: reducedMotion.matches ? "auto" : "smooth" });
+    notify(`"${created.title}" added to To do.`, "info");
+  } else if (filtersActive()) {
+    notify(`"${created.title}" was added to To do, but your filters hide it.`, "info", { label: "Clear filters", run: clearFilters });
+  } else {
+    notify(`"${created.title}" added to To do. Use "Load more tasks" to see it.`, "info");
+  }
 }));
 
 /* Task dialog */
