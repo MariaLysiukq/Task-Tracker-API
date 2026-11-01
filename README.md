@@ -143,7 +143,11 @@ nothing from third-party servers.
 - **Filter** by priority, assignee or due date, with quick filters (Overdue, Due in 7 days,
   Assigned to me, High priority). Active filters stay visible as pills you can remove.
   Sort newest or oldest first.
-- Click a task title to edit every field, delete the task, or read and write comments.
+- Click a task to open it in a side panel: edit the title and description in place; status,
+  priority, assignee and due date save as soon as you change them. Delete the task, or read
+  and write comments (<kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends).
+- Keyboard: <kbd>C</kbd> new task, <kbd>/</kbd> filter, <kbd>J</kbd>/<kbd>K</kbd> next and
+  previous task (also inside the panel), <kbd>Esc</kbd> close or undo an edit in progress.
 - Dark by default; switch between System, Light and Dark at the bottom of the sidebar.
 - Works on phones (the sidebar becomes a menu, columns become tabs) and with the keyboard.
 

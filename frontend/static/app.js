@@ -235,12 +235,12 @@ async function loadAllCounts() {
   }
 }
 function countTotal(c) { return STATUSES.reduce((sum, [status]) => sum + c[status], 0); }
-function bumpCount(from, to) {
-  const c = state.project && state.counts[state.project.id];
+function bumpCount(from, to, projectId = state.project && state.project.id) {
+  const c = state.counts[projectId];
   if (!c) return;
   if (from) c[from] = Math.max(0, c[from] - 1);
   if (to) c[to] += 1;
-  renderProgress();
+  if (state.project && state.project.id === projectId) renderProgress();
   renderProjects();
 }
 function railSegments(c, cls) {
@@ -432,8 +432,8 @@ async function loadTasks(append) {
   state.tasks = append ? state.tasks.concat(page.items) : page.items;
   state.total = page.total;
 }
-function memberOptions() {
-  return state.members.map((m) => [String(m.user_id), m.user_id === state.me.id ? `You (#${m.user_id})` : `User #${m.user_id}`]);
+function memberOptions(members = state.members) {
+  return members.map((m) => [String(m.user_id), m.user_id === state.me.id ? `You (#${m.user_id})` : `User #${m.user_id}`]);
 }
 /* "Due in 7 days" has no API filter: the server drops overdue tasks, the client keeps the next 7 days. */
 function visibleTasks() {
@@ -528,7 +528,10 @@ function priorityIcon(priority) {
       svg("rect", { class: i < level ? "bar on" : "bar", x: String(2 + i * 4.5), y: String(10 - i * 3.5), width: "3", height: String(4 + i * 3.5), rx: "1" }))),
     h("span", { class: "sr-only" }, text));
 }
+const isCurrent = (t) => Boolean(state.task && state.task.id === t.id && $("task-dialog").open);
 const taskId = (t) => h("span", { class: "task-id" }, `TT-${t.id}`);
+const badge = (userId) => h("span", { class: "avatar sm", "aria-hidden": "true" },
+  state.me && userId === state.me.id ? initialOf(state.me.full_name) : String(userId));
 function avatar(userId) {
   if (!userId) return h("span", { class: "avatar sm empty", title: "Unassigned" }, h("span", { class: "sr-only" }, "Unassigned"));
   const me = state.me && userId === state.me.id;
@@ -545,14 +548,14 @@ function dueChip(t) {
 }
 function taskCard(t) {
   const [nextStatus, nextLabel] = NEXT_STEP[t.status];
-  return h("li", { class: "card", "data-id": String(t.id) },
+  return h("li", { class: `card${isCurrent(t) ? " is-current" : ""}`, "data-id": String(t.id) },
     h("div", { class: "card-top" }, statusIcon(t.status), taskId(t), avatar(t.assignee_id)),
     h("button", { type: "button", class: "card-title", onclick: guard(() => openTask(t.id)) }, t.title),
     h("div", { class: "card-meta" }, priorityIcon(t.priority), dueChip(t),
       h("button", { type: "button", class: "card-move ghost small", onclick: guard(() => moveTask(t, nextStatus)) }, nextLabel)));
 }
 function taskRow(t, onOpen) {
-  return h("li", { class: `row${t.status === "done" ? " is-done" : ""}`, "data-id": String(t.id) },
+  return h("li", { class: `row${t.status === "done" ? " is-done" : ""}${isCurrent(t) ? " is-current" : ""}`, "data-id": String(t.id) },
     h("button", { type: "button", class: "row-main", onclick: guard(() => onOpen(t)) },
       priorityIcon(t.priority), taskId(t), statusIcon(t.status), h("span", { class: "sr-only" }, labelOf(STATUSES, t.status)),
       h("span", { class: "row-title" }, t.title), dueChip(t), avatar(t.assignee_id)));
@@ -630,10 +633,6 @@ async function openMyTasks() {
   state.mine = state.projects.map((project, i) => ({ project, page: pages[i] })).filter((g) => g.page.total > 0);
   if (state.view === "mine") renderMine();
 }
-async function openFromMine(t) {
-  await selectProject(t.project_id);
-  await openTask(t.id);
-}
 function renderMine() {
   const all = state.mine.flatMap((g) => g.page.items);
   const open = all.filter((t) => t.status !== "done").length;
@@ -642,7 +641,7 @@ function renderMine() {
   $("mine-view").replaceChildren(
     h("div", { class: "stack" }, h("h1", {}, "My tasks"), h("p", { class: "muted" }, summary)),
     ...state.mine.map((g) => h("div", { class: "stack" },
-      taskGroup(progressRing(state.counts[g.project.id]), g.project.name, byStatus(g.page.items), openFromMine,
+      taskGroup(progressRing(state.counts[g.project.id]), g.project.name, byStatus(g.page.items), (t) => openTask(t.id),
         h("button", { type: "button", class: "ghost small group-action", onclick: guard(() => selectProject(g.project.id)) }, "Open project")),
       g.page.total > g.page.items.length && h("p", { class: "muted note" }, `Showing the newest ${g.page.items.length} of ${g.page.total}.`))));
 }
@@ -699,13 +698,22 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
   }
 }));
 
-/* Task dialog */
+/* Task panel: opens from the right; every property saves as soon as it changes */
+function knownTask(id) {
+  const fromMine = state.mine ? state.mine.flatMap((g) => g.page.items) : [];
+  return (state.view === "project" && state.tasks.find((t) => t.id === id)) || fromMine.find((t) => t.id === id) || null;
+}
 async function openTask(id) {
-  state.task = state.tasks.find((t) => t.id === id) || await api("GET", `/tasks/${id}`);
+  const task = knownTask(id) || await api("GET", `/tasks/${id}`);
+  const sameProject = state.project && task.project_id === state.project.id;
+  const members = sameProject ? state.members : (await api("GET", `/projects/${task.project_id}/members?limit=100`)).items;
+  state.task = task;
+  state.panelMembers = members;
   state.editingComment = null;
   await loadComments();
   renderSheet();
   if (!$("task-dialog").open) $("task-dialog").showModal();
+  markCurrent();
 }
 async function loadComments() {
   const page = await api("GET", `/tasks/${state.task.id}/comments?limit=100`);
@@ -713,58 +721,126 @@ async function loadComments() {
   state.commentsTotal = page.total;
 }
 function closeTask() { $("task-dialog").close(); }
-$("task-dialog").addEventListener("close", () => { state.task = null; });
+$("task-dialog").addEventListener("close", () => {
+  const id = state.task && state.task.id;
+  state.task = null;
+  markCurrent();
+  const back = id && taskTargets().find((el) => el.closest("[data-id]").dataset.id === String(id));
+  if (back) back.focus();
+});
+function markCurrent() {
+  for (const el of document.querySelectorAll(".is-current")) el.classList.remove("is-current");
+  if (!state.task || !$("task-dialog").open) return;
+  for (const el of document.querySelectorAll(`.card[data-id="${state.task.id}"], .row[data-id="${state.task.id}"]`)) {
+    el.classList.add("is-current");
+    if (el.offsetParent) el.scrollIntoView({ block: "nearest" });
+  }
+}
+function applyTaskUpdate(old, updated) {
+  if (updated.status !== old.status) bumpCount(old.status, updated.status, updated.project_id);
+  state.task = updated;
+  if (state.tasks.some((t) => t.id === updated.id)) {
+    replaceTask(updated);
+    if (state.view === "project") renderBoard();
+  }
+  if (state.mine) {
+    for (const g of state.mine) g.page.items = g.page.items.map((t) => (t.id === updated.id ? updated : t));
+    if (state.view === "mine") renderMine();
+  }
+  markCurrent();
+}
+async function patchTask(changes) {
+  const old = state.task;
+  try {
+    applyTaskUpdate(old, await api("PATCH", `/tasks/${old.id}`, changes));
+  } finally {
+    if (state.task && state.task.id === old.id) renderSheet();
+  }
+}
+/* Esc inside a changed text field undoes the edit instead of closing the panel. */
+function revertOnEscape(original) {
+  return (event) => {
+    if (event.key !== "Escape" || event.target.value === original) return;
+    event.preventDefault();
+    event.target.value = original;
+  };
+}
+function prop(name, icon, control, cls = "") {
+  return h("div", { class: `prop ${cls}` },
+    h("span", { class: "prop-name", "aria-hidden": "true" }, name),
+    h("span", { class: "prop-value" }, h("span", { class: "prop-icon", "aria-hidden": "true" }, icon), control));
+}
+const calendarIcon = () => svg("svg", { viewBox: "0 0 16 16", width: "14", height: "14" },
+  svg("rect", { class: "icon-stroke", x: "2.5", y: "3.5", width: "11", height: "10", rx: "1.5" }), svg("path", { class: "icon-stroke", d: "M2.5 6.5h11M5.5 2v3M10.5 2v3" }));
 function renderSheet() {
   const t = state.task;
-  const form = h("form", { class: "stack", onsubmit: formHandler(async (_, data) => saveTask(data)) },
-    h("label", {}, "Title", h("input", { name: "title", value: t.title, maxlength: "150", required: true })),
-    h("label", {}, "Description", h("textarea", { name: "description", rows: 4, maxlength: "5000" }, t.description || "")),
-    h("div", { class: "field-row" },
-      h("label", {}, "Status", select("status", STATUSES, t.status)),
-      h("label", {}, "Priority", select("priority", PRIORITIES, t.priority))),
-    h("div", { class: "field-row" },
-      h("label", {}, "Assignee", select("assignee_id", [["", "Unassigned"], ...memberOptions()], t.assignee_id)),
-      h("label", {}, "Due", h("input", { name: "due_at", type: "datetime-local", value: toLocalInput(t.due_at) }))),
-    h("p", { class: "muted note" }, `Created ${fmtDate(t.created_at)}, updated ${fmtDate(t.updated_at)}`),
-    h("div", { class: "actions" },
-      h("button", { class: "primary", type: "submit" }, "Save task"),
-      h("button", { type: "button", class: "danger", onclick: guard(deleteTask) }, "Delete task")));
+  const active = document.activeElement;
+  const focusName = active && $("sheet").contains(active) ? active.getAttribute("name") || "close" : null;
+  const save = (changes) => guard(() => patchTask(changes))();
+  const saveTitle = (input) => {
+    const value = input.value.trim();
+    if (!value) { input.value = state.task.title; notify("A task needs a title."); return; }
+    if (value !== state.task.title) save({ title: value });
+  };
+  const saveDue = (input) => {
+    if (input.value !== toLocalInput(state.task.due_at)) save({ due_at: fromLocalInput(input.value) });
+  };
+  const project = state.projects.find((p) => p.id === t.project_id);
+  const overdue = isOverdue(t);
+  $("task-dialog").setAttribute("aria-label", `TT-${t.id}: ${t.title}`);
+  const title = h("input", { class: "panel-title", name: "title", value: t.title, maxlength: "150", "aria-label": "Title", autocomplete: "off",
+    onkeydown: (event) => {
+      if (event.key === "Enter") { event.preventDefault(); saveTitle(event.target); } else revertOnEscape(t.title)(event);
+    },
+    onchange: (event) => saveTitle(event.target) });
+  const description = h("textarea", { class: "panel-desc", name: "description", rows: 3, maxlength: "5000", placeholder: "Add a description…",
+    "aria-label": "Description", onkeydown: revertOnEscape(t.description || ""),
+    onchange: (event) => {
+      const value = event.target.value.trim() ? event.target.value : null;
+      if (value !== state.task.description) save({ description: value });
+    } }, t.description || "");
+  const due = h("input", { name: "due_at", type: "datetime-local", value: toLocalInput(t.due_at), "aria-label": "Due date",
+    onkeydown: (event) => { if (event.key === "Enter") { event.preventDefault(); saveDue(event.target); } },
+    onblur: (event) => saveDue(event.target) });
   $("sheet").replaceChildren(
-    h("div", { class: "sheet-head" },
-      h("h2", { id: "task-dialog-title" }, h("span", { class: "mono muted" }, `#${t.id} `), "Task"),
-      h("button", { type: "button", onclick: closeTask }, "Close")),
-    form,
-    renderComments());
-}
-async function saveTask(data) {
-  const t = state.task;
-  const changes = {};
-  const title = data.get("title").trim();
-  if (title !== t.title) changes.title = title;
-  const description = data.get("description").trim() ? data.get("description") : null;
-  if (description !== t.description) changes.description = description;
-  for (const key of ["status", "priority"]) if (data.get(key) !== t[key]) changes[key] = data.get(key);
-  const assignee = data.get("assignee_id") ? Number(data.get("assignee_id")) : null;
-  if (assignee !== t.assignee_id) changes.assignee_id = assignee;
-  if (data.get("due_at") !== toLocalInput(t.due_at)) changes.due_at = fromLocalInput(data.get("due_at"));
-  if (!Object.keys(changes).length) { notify("Nothing changed.", "info"); return; }
-  const updated = await api("PATCH", `/tasks/${t.id}`, changes);
-  if (updated.status !== t.status) bumpCount(t.status, updated.status);
-  replaceTask(updated);
-  state.task = updated;
-  renderBoard();
-  renderSheet();
-  notify("Task saved.", "info");
+    h("div", { class: "panel-head" },
+      statusIcon(t.status), taskId(t), project && h("span", { class: "panel-project muted" }, project.name),
+      h("div", { class: "panel-nav" },
+        h("button", { type: "button", class: "icon-btn", name: "previous", "aria-label": "Previous task (K)", title: "Previous task (K)", onclick: () => moveSelection(-1) },
+          svg("svg", { viewBox: "0 0 16 16", width: "16", height: "16", "aria-hidden": "true" }, svg("path", { class: "icon-stroke", d: "M4 10l4-4 4 4" }))),
+        h("button", { type: "button", class: "icon-btn", name: "next", "aria-label": "Next task (J)", title: "Next task (J)", onclick: () => moveSelection(1) },
+          svg("svg", { viewBox: "0 0 16 16", width: "16", height: "16", "aria-hidden": "true" }, svg("path", { class: "icon-stroke", d: "M4 6l4 4 4-4" }))),
+        h("button", { type: "button", class: "icon-btn", name: "close", autofocus: true, "aria-label": "Close (Esc)", title: "Close (Esc)", onclick: closeTask },
+          svg("svg", { viewBox: "0 0 16 16", width: "16", height: "16", "aria-hidden": "true" }, svg("path", { class: "icon-stroke", d: "M4 4l8 8M12 4l-8 8" }))))),
+    h("div", { class: "panel-main" }, title, description),
+    h("div", { class: "props", role: "group", "aria-label": "Properties" },
+      prop("Status", statusIcon(t.status), select("status", STATUSES, t.status, { "aria-label": "Status", onchange: (event) => save({ status: event.target.value }) })),
+      prop("Priority", priorityIcon(t.priority), select("priority", PRIORITIES, t.priority, { "aria-label": "Priority", onchange: (event) => save({ priority: event.target.value }) })),
+      prop("Assignee", t.assignee_id ? badge(t.assignee_id) : h("span", { class: "avatar sm empty" }),
+        select("assignee_id", [["", "Unassigned"], ...memberOptions(state.panelMembers)], t.assignee_id, { "aria-label": "Assignee",
+          onchange: (event) => save({ assignee_id: event.target.value ? Number(event.target.value) : null }) })),
+      prop("Due", calendarIcon(), h("span", { class: "due-field" }, due, overdue && h("span", { class: "due overdue" }, "Overdue")), overdue ? "is-overdue" : "")),
+    h("div", { class: "panel-meta" },
+      h("p", { class: "muted note" }, `Created ${fmtDate(t.created_at)} · Updated ${fmtDate(t.updated_at)}`),
+      h("button", { type: "button", class: "ghost small danger", onclick: guard(deleteTask) }, "Delete task")),
+    renderComments(),
+    h("p", { class: "panel-hint muted" }, h("kbd", {}, "J"), " ", h("kbd", {}, "K"), " next and previous task · ", h("kbd", {}, "Esc"), " close"));
+  const again = focusName && ($("sheet").querySelector(`[name="${focusName}"]`) || $("sheet").querySelector("[name=close]"));
+  if (again) again.focus();
 }
 async function deleteTask() {
   const t = state.task;
   if (!confirm(`Delete "${t.title}" and its comments? This cannot be undone.`)) return;
   await api("DELETE", `/tasks/${t.id}`);
-  bumpCount(t.status, null);
-  state.tasks = state.tasks.filter((x) => x.id !== t.id);
-  state.total -= 1;
+  bumpCount(t.status, null, t.project_id);
+  if (state.tasks.some((x) => x.id === t.id)) {
+    state.tasks = state.tasks.filter((x) => x.id !== t.id);
+    state.total -= 1;
+  }
+  if (state.mine) for (const g of state.mine) g.page.items = g.page.items.filter((x) => x.id !== t.id);
   closeTask();
-  renderBoard();
+  if (state.view === "mine") renderMine();
+  else renderBoard();
   notify(`Deleted "${t.title}".`, "info");
 }
 
@@ -780,39 +856,71 @@ function renderComments() {
         state.editingComment = null;
         renderSheet();
       }) },
-        h("textarea", { name: "body", rows: 3, maxlength: "2000", required: true, "aria-label": "Edit comment" }, c.body),
+        h("textarea", { name: "body", rows: 3, maxlength: "2000", required: true, "aria-label": "Edit comment", onkeydown: submitOnCtrlEnter }, c.body),
         h("div", { class: "actions" },
-          h("button", { class: "primary", type: "submit" }, "Save comment"),
-          h("button", { type: "button", onclick: () => { state.editingComment = null; renderSheet(); } }, "Cancel"))));
+          h("button", { class: "primary small", type: "submit" }, "Save comment"),
+          h("button", { type: "button", class: "ghost small", onclick: () => { state.editingComment = null; renderSheet(); } }, "Cancel"))));
     }
     return h("li", { class: "comment" },
-      h("div", { class: "comment-head" },
-        h("strong", {}, personName(c.author_id)),
-        h("span", { class: "muted" }, fmtDate(c.created_at) + (edited ? " (edited)" : "")),
-        mine && h("button", { type: "button", class: "link", onclick: () => { state.editingComment = c.id; renderSheet(); } }, "Edit"),
-        mine && h("button", { type: "button", class: "link danger", onclick: guard(() => deleteComment(c.id)) }, "Delete")),
-      h("p", {}, c.body));
+      badge(c.author_id),
+      h("div", { class: "comment-body" },
+        h("div", { class: "comment-head" },
+          h("strong", {}, personName(c.author_id)),
+          h("span", { class: "muted" }, fmtDate(c.created_at) + (edited ? " (edited)" : "")),
+          mine && h("button", { type: "button", class: "link", onclick: () => { state.editingComment = c.id; renderSheet(); } }, "Edit"),
+          mine && h("button", { type: "button", class: "link danger", onclick: guard(() => deleteComment(c.id)) }, "Delete")),
+        h("p", {}, c.body)));
   });
   const shown = state.comments.length < state.commentsTotal
     ? h("p", { class: "muted" }, `Showing the newest ${state.comments.length} of ${state.commentsTotal} comments.`) : null;
-  return h("section", { class: "stack", "aria-label": "Comments" },
-    h("h2", {}, `Comments (${state.commentsTotal})`),
+  return h("section", { class: "stack comments", "aria-label": "Comments" },
+    h("h3", { class: "comments-title" }, `Comments (${state.commentsTotal})`),
     shown,
-    items.length ? h("ol", { class: "comment-list" }, items) : h("p", { class: "muted" }, "No comments yet."),
-    h("form", { class: "stack", onsubmit: formHandler(async (form, data) => {
+    items.length ? h("ol", { class: "comment-list" }, items) : h("p", { class: "muted note" }, "No comments yet."),
+    h("form", { class: "composer", onsubmit: formHandler(async (form, data) => {
       await api("POST", `/tasks/${state.task.id}/comments`, { body: data.get("body") });
       form.reset();
       await loadComments();
       renderSheet();
     }) },
-      h("textarea", { name: "body", rows: 3, maxlength: "2000", required: true, placeholder: "Write a comment", "aria-label": "New comment" }),
-      h("button", { type: "submit", class: "self-start" }, "Add comment")));
+      h("textarea", { name: "body", rows: 3, maxlength: "2000", required: true, placeholder: "Leave a comment…", "aria-label": "New comment", onkeydown: submitOnCtrlEnter }),
+      h("div", { class: "composer-foot" },
+        h("span", { class: "muted note" }, h("kbd", {}, "Ctrl"), " + ", h("kbd", {}, "Enter"), " to send"),
+        h("button", { type: "submit", class: "primary small" }, "Comment"))));
+}
+function submitOnCtrlEnter(event) {
+  if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
+    event.preventDefault();
+    event.target.form.requestSubmit();
+  }
 }
 async function deleteComment(id) {
   if (!confirm("Delete this comment?")) return;
   await api("DELETE", `/comments/${id}`);
   await loadComments();
   renderSheet();
+}
+
+/* J / K: move through the visible tasks in reading order; with the panel open, switch the panel to that task */
+function taskTargets() {
+  return [...document.querySelectorAll("#board .card-title, #list .row-main, #mine-view .row-main")].filter((el) => el.offsetParent !== null);
+}
+function moveSelection(step) {
+  const items = taskTargets();
+  if (!items.length) return;
+  const idOf = (el) => Number(el.closest("[data-id]").dataset.id);
+  const clamp = (i) => Math.min(items.length - 1, Math.max(0, i));
+  if ($("task-dialog").open && state.task) {
+    const i = items.findIndex((el) => idOf(el) === state.task.id);
+    const next = items[i === -1 ? 0 : clamp(i + step)];
+    if (idOf(next) !== state.task.id) guard(() => openTask(idOf(next)))();
+    return;
+  }
+  const current = document.activeElement && document.activeElement.closest && document.activeElement.closest("[data-id]");
+  const i = items.findIndex((el) => el.closest("[data-id]") === current);
+  const next = items[i === -1 ? (step > 0 ? 0 : items.length - 1) : clamp(i + step)];
+  next.focus();
+  next.scrollIntoView({ block: "nearest" });
 }
 
 /* Theme: "system", "light" or "dark"; theme.js applies the saved choice before first paint */
@@ -876,15 +984,29 @@ $("nav-backdrop").addEventListener("click", () => setNav(false));
 narrowScreen.addEventListener("change", () => setNav(false));
 const isTyping = (el) => Boolean(el && el.closest && el.closest("input, textarea, select, [contenteditable]"));
 document.addEventListener("keydown", (event) => {
-  if ($("app").hidden || $("task-dialog").open || event.isComposing) return;
+  if ($("app").hidden || event.isComposing) return;
+  const panelOpen = $("task-dialog").open;
   if (event.key === "Escape") {
+    if (panelOpen) return;
     if (POPOVER_BUTTONS.some((id) => !panelOf(id).hidden)) { event.preventDefault(); closePopovers(true); return; }
     if (!$("new-project").hidden && $("new-project").contains(document.activeElement)) { setNewProjectForm(false); $("new-project-toggle").focus(); return; }
     if ($("sidebar").classList.contains("is-open")) setNav(false);
     return;
   }
-  if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || isTyping(event.target)) return;
-  if ((event.key.toLowerCase() === "c" || event.code === "KeyC") && state.project && state.view === "project") {
+  if (event.ctrlKey || event.metaKey || event.altKey || isTyping(event.target)) return;
+  const key = event.key.toLowerCase();
+  if (key === "j" || key === "k" || event.code === "KeyJ" || event.code === "KeyK") {
+    event.preventDefault();
+    moveSelection(key === "k" || event.code === "KeyK" ? -1 : 1);
+    return;
+  }
+  if (panelOpen || event.repeat) return;
+  if (event.key === "/" && state.project && state.view === "project") {
+    event.preventDefault();
+    openPopover("filter-open");
+    return;
+  }
+  if ((key === "c" || event.code === "KeyC") && state.project && state.view === "project") {
     event.preventDefault();
     setNav(false);
     openPopover("new-task-open");

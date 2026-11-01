@@ -100,6 +100,13 @@ async def test_views_can_be_switched(client: AsyncClient) -> None:
     assert 'id="mine-view"' in html
 
 
+async def test_task_panel_and_shortcuts_are_declared(client: AsyncClient) -> None:
+    """The task panel is a labelled dialog and the Filter shortcut is announced."""
+    html = (await client.get("/")).text
+    assert '<dialog id="task-dialog" class="panel" aria-label="Task">' in html
+    assert 'aria-controls="filter-pop" aria-keyshortcuts="/"' in html
+
+
 @pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
 async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
     """The page and its assets are never reused from cache without a check."""
