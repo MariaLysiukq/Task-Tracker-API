@@ -72,7 +72,7 @@ label > input, label > select, label > textarea { color: var(--ink); font-size: 
 
 /* App shell */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--rule); }
-.wordmark { font-weight: 600; }
+.wordmark { font-weight: 600; white-space: nowrap; }
 .whoami { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; justify-content: flex-end; }
 .layout { display: grid; grid-template-columns: 250px minmax(0, 1fr); min-height: calc(100vh - 57px); }
 .sidebar { border-right: 1px solid var(--rule); padding: 1.25rem; display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 1rem; min-width: 0; }
@@ -106,7 +106,7 @@ details.members summary { cursor: pointer; font-weight: 500; }
 .column[data-status="done"] .column-head { border-bottom-color: var(--done); }
 .cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
 .card { background: var(--surface); border: 1px solid var(--rule); border-radius: 8px; padding: 0.65rem 0.75rem; display: grid; gap: 0.4rem; }
-.card.prio-high { border-left: 3px solid var(--overdue); }
+.card.prio-high { box-shadow: inset 3px 0 0 var(--overdue); }
 .card-title { border: 0; background: none; padding: 0; text-align: left; font-weight: 500; overflow-wrap: anywhere; }
 .card-title:hover { text-decoration: underline; text-underline-offset: 2px; }
 .column[data-status="done"] .card-title { color: var(--muted); }
@@ -186,7 +186,7 @@ dialog::backdrop { background: rgb(0 0 0 / 0.35); }
       <h2>Projects</h2>
       <ul class="project-list" id="project-list"></ul>
       <form id="new-project" class="inline-form">
-        <input name="name" placeholder="New project name" aria-label="New project name" maxlength="100" required>
+        <input name="name" placeholder="New project" aria-label="New project name" maxlength="100" required>
         <button type="submit">Create</button>
       </form>
     </aside>
@@ -665,7 +665,7 @@ async function deleteTask() {
 function renderComments() {
   const items = state.comments.map((c) => {
     const mine = c.author_id === state.me.id;
-    const edited = c.updated_at !== c.created_at;
+    const edited = parseUtc(c.updated_at) - parseUtc(c.created_at) > 1000;
     if (state.editingComment === c.id) {
       return h("li", { class: "comment" }, h("form", { class: "stack", onsubmit: formHandler(async (_, data) => {
         const updated = await api("PATCH", `/comments/${c.id}`, { body: data.get("body") });
