@@ -76,6 +76,19 @@ async def test_theme_is_applied_before_first_paint(client: AsyncClient) -> None:
         assert f'data-theme-choice="{choice}"' in html
 
 
+async def test_shell_controls_are_labelled(client: AsyncClient) -> None:
+    """Sidebar drawer, New task popover and filter menu expose their state to assistive tech."""
+    html = (await client.get("/")).text
+    assert (
+        'id="nav-open" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"'
+        in html
+    )
+    assert 'aria-controls="new-task-pop" aria-keyshortcuts="c"' in html
+    assert 'id="new-task-pop" role="dialog" aria-label="New task" hidden' in html
+    assert 'id="filter-open" aria-expanded="false" aria-controls="filter-pop"' in html
+    assert 'id="filter-pills" aria-label="Active filters"' in html
+
+
 @pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
 async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
     """The page and its assets are never reused from cache without a check."""

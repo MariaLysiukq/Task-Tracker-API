@@ -36,56 +36,82 @@
 </section>
 
 <div id="app" hidden>
-  <header class="topbar">
-    <span class="wordmark"><svg class="mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g transform="rotate(-90 12 12)"><circle class="mark-arc mark-todo" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="0"/><circle class="mark-arc mark-in_progress" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-33.33"/><circle class="mark-arc mark-done" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-66.67"/></g><path class="mark-check" d="M8.4 12.3l2.5 2.5 4.8-5.1"/></svg>Task Tracker</span>
-    <div class="whoami">
-      <span id="me-name"></span>
-      <span class="mono muted" id="me-id" title="Share this ID so a project owner can add you"></span>
-      <button type="button" id="sign-out">Sign out</button>
+  <div class="nav-backdrop" id="nav-backdrop" hidden></div>
+  <aside class="sidebar" id="sidebar" aria-label="Navigation">
+    <div class="sidebar-top">
+      <span class="wordmark"><svg class="mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><g transform="rotate(-90 12 12)"><circle class="mark-arc mark-todo" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="0"/><circle class="mark-arc mark-in_progress" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-33.33"/><circle class="mark-arc mark-done" cx="12" cy="12" r="9" pathLength="100" stroke-dasharray="26 74" stroke-dashoffset="-66.67"/></g><path class="mark-check" d="M8.4 12.3l2.5 2.5 4.8-5.1"/></svg>Task Tracker</span>
+      <button type="button" class="icon-btn nav-close" id="nav-close" aria-label="Close navigation"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="icon-stroke" d="M4 4l8 8M12 4l-8 8"/></svg></button>
     </div>
-  </header>
-  <div class="layout">
-    <aside class="sidebar" aria-label="Projects">
-      <h2>Projects</h2>
+    <nav class="nav-section" aria-labelledby="projects-title">
+      <h2 class="nav-title" id="projects-title">Projects</h2>
       <ul class="project-list" id="project-list"></ul>
-      <form id="new-project" class="inline-form">
-        <input name="name" placeholder="New project" aria-label="New project name" maxlength="100" required>
+      <button type="button" class="nav-item" id="new-project-toggle" aria-expanded="false" aria-controls="new-project"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="icon-stroke" d="M8 3v10M3 8h10"/></svg>New project</button>
+      <form id="new-project" class="inline-form" hidden>
+        <input name="name" placeholder="Project name" aria-label="New project name" maxlength="100" required>
         <button type="submit">Create</button>
       </form>
+    </nav>
+    <div class="sidebar-foot">
       <div class="theme-switch" role="group" aria-label="Theme">
         <button type="button" data-theme-choice="system" aria-pressed="false">System</button>
         <button type="button" data-theme-choice="light" aria-pressed="false">Light</button>
         <button type="button" data-theme-choice="dark" aria-pressed="false">Dark</button>
       </div>
-    </aside>
-    <main id="main">
+      <div class="account">
+        <span class="avatar" id="me-avatar" aria-hidden="true"></span>
+        <span class="account-text"><span class="account-name" id="me-name"></span><span class="mono muted" id="me-id" title="Share this ID so a project owner can add you"></span></span>
+        <button type="button" class="ghost small" id="sign-out">Sign out</button>
+      </div>
+    </div>
+  </aside>
+  <main id="main">
+    <header class="pagebar">
+      <button type="button" class="icon-btn nav-open" id="nav-open" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path class="icon-stroke" d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg></button>
+      <nav class="crumbs" aria-label="Breadcrumb"><span class="muted">Projects</span><span class="crumb-sep" aria-hidden="true">/</span><span class="crumb-current" id="crumb-project" aria-current="page"></span></nav>
+      <div class="pop-anchor">
+        <button type="button" class="primary small" id="new-task-open" aria-expanded="false" aria-controls="new-task-pop" aria-keyshortcuts="c" hidden>New task <kbd>C</kbd></button>
+        <div class="popover new-task-pop" id="new-task-pop" role="dialog" aria-label="New task" hidden>
+          <form class="stack" id="new-task">
+            <input name="title" maxlength="150" required placeholder="Task title" aria-label="Task title" class="title-input">
+            <div class="field-grid">
+              <label>Priority<select name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+              <label>Assignee<select name="assignee_id" id="new-task-assignee"></select></label>
+              <label class="span-2">Due<input name="due_at" type="datetime-local"></label>
+            </div>
+            <div class="pop-actions">
+              <button type="button" class="ghost" id="new-task-cancel">Cancel</button>
+              <button class="primary" type="submit">Create task</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </header>
+    <div class="content">
       <div id="no-project" class="empty-state" hidden>
         <h1>No project selected</h1>
-        <p class="muted">Create a project on the left to start tracking tasks, or ask a project owner to add you with your ID.</p>
+        <p class="muted">Create one with <strong>New project</strong> in the sidebar, or ask a project owner to add you with the ID shown under your name.</p>
       </div>
       <div id="project-view" hidden>
         <div class="stack loose">
           <div class="project-head" id="project-head"></div>
           <div class="progress" id="progress"></div>
           <details class="members" id="members"></details>
-          <div class="toolbar">
-            <form class="new-task" id="new-task">
-              <label>New task<input name="title" maxlength="150" required placeholder="What needs doing?"></label>
-              <label>Priority<select name="priority"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
-              <label>Assignee<select name="assignee_id" id="new-task-assignee"></select></label>
-              <label>Due<input name="due_at" type="datetime-local"></label>
-              <button class="primary" type="submit">Add task</button>
-            </form>
-            <div class="filters" id="filters"></div>
-            <div class="filter-status" id="filter-status" role="status" hidden></div>
+          <div class="filterbar" id="filterbar">
+            <div class="pop-anchor">
+              <button type="button" class="ghost small" id="filter-open" aria-expanded="false" aria-controls="filter-pop"><svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path class="icon-stroke" d="M2.5 4h11M4.5 8h7M6.5 12h3"/></svg>Filter</button>
+              <div class="popover filter-pop" id="filter-pop" role="dialog" aria-label="Filters" hidden></div>
+            </div>
+            <ul class="pills" id="filter-pills" aria-label="Active filters"></ul>
+            <span class="filter-status muted" id="filter-status" role="status"></span>
+            <label class="order-select"><span class="sr-only">Order</span><select id="order-select"><option value="desc">Newest first</option><option value="asc">Oldest first</option></select></label>
           </div>
           <div class="col-tabs" role="tablist" aria-label="Status" id="col-tabs"></div>
           <div class="board" id="board"></div>
           <div id="more"></div>
         </div>
       </div>
-    </main>
-  </div>
+    </div>
+  </main>
 </div>
 
 <dialog id="task-dialog" aria-labelledby="task-dialog-title"><div class="sheet" id="sheet"></div></dialog>

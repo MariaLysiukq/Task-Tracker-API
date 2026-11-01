@@ -3,6 +3,8 @@ const API = "/api/v1";
 const STATUSES = [["todo", "To do"], ["in_progress", "In progress"], ["done", "Done"]];
 const PRIORITIES = [["low", "Low"], ["medium", "Medium"], ["high", "High"]];
 const NEXT_STEP = { todo: ["in_progress", "Start"], in_progress: ["done", "Mark done"], done: ["todo", "Reopen"] };
+const DUE_FILTERS = [["", "Any"], ["overdue", "Overdue"], ["week", "Due in 7 days"], ["not_overdue", "Not overdue"]];
+const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const EMPTY_COLUMN = { todo: "Nothing to do.", in_progress: "Nothing in progress.", done: "Nothing finished yet." };
 const store = {
   get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
@@ -10,12 +12,14 @@ const store = {
 };
 const state = {
   token: store.get("tt.token"), me: null, projects: [], project: null, members: [],
-  tasks: [], total: 0, filters: { priority: "", assignee_id: "", overdue: "", order: "desc" },
+  tasks: [], total: 0, filters: { priority: "", assignee_id: "", due: "", order: "desc" },
   task: null, comments: [], commentsTotal: 0, editingComment: null, editingProject: false, column: "todo",
   counts: {},
 };
 const $ = (id) => document.getElementById(id);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const narrowScreen = window.matchMedia("(max-width: 760px)");
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 function h(tag, attrs = {}, ...children) {
   const el = document.createElement(tag);
@@ -30,6 +34,12 @@ function h(tag, attrs = {}, ...children) {
     if (child == null || child === false) continue;
     el.append(child instanceof Node ? child : String(child));
   }
+  return el;
+}
+function svg(tag, attrs = {}, ...children) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) el.setAttribute(key, value);
+  el.append(...children);
   return el;
 }
 function select(name, options, value, attrs = {}) {
@@ -146,6 +156,8 @@ function signOut(message) {
   state.projects = [];
   state.counts = {};
   $("progress").replaceChildren();
+  closePopovers();
+  setNav(false);
   store.set("tt.token", null);
   showAuth();
   if (message) notify(message, "info");
@@ -162,7 +174,8 @@ async function boot() {
   $("auth").hidden = true;
   $("app").hidden = false;
   $("me-name").textContent = state.me.full_name;
-  $("me-id").textContent = `Your ID ${state.me.id}`;
+  $("me-id").textContent = `ID ${state.me.id}`;
+  $("me-avatar").textContent = (state.me.full_name.trim()[0] || "?").toUpperCase();
   await loadProjects(Number(store.get("tt.project")) || null);
 }
 
@@ -178,7 +191,8 @@ async function loadProjects(preferredId) {
 async function selectProject(id) {
   state.project = state.projects.find((p) => p.id === id) || null;
   state.editingProject = false;
-  Object.assign(state.filters, { priority: "", assignee_id: "", overdue: "" });
+  Object.assign(state.filters, { priority: "", assignee_id: "", due: "" });
+  closePopovers();
   store.set("tt.project", id);
   renderProjects();
   const [members, counts] = await Promise.all([api("GET", `/projects/${id}/members?limit=100`), fetchCounts(id), loadTasks(false)]);
@@ -241,19 +255,42 @@ function renderProgress() {
   box.querySelector(".rail-legend").replaceChildren(...STATUSES.map(([status, text]) =>
     h("span", { class: "legend-item" }, h("span", { class: `swatch seg-${status}` }), `${text} ${c[status]}`)));
 }
+function progressRing(c) {
+  const total = c ? countTotal(c) : 0;
+  const share = (n) => (total ? (n / total) * 100 : 0);
+  const arc = (status, length, offset) => length > 0 && svg("circle", { class: `ring-arc ring-${status}`, cx: "8", cy: "8", r: "6",
+    pathLength: "100", "stroke-dasharray": `${length} ${100 - length}`, "stroke-dashoffset": String(-offset) });
+  const done = share(c ? c.done : 0);
+  const active = share(c ? c.in_progress : 0);
+  return svg("svg", { class: `ring${total && c.done === total ? " is-complete" : ""}`, viewBox: "0 0 16 16", width: "16", height: "16", "aria-hidden": "true" },
+    svg("g", { transform: "rotate(-90 8 8)" },
+      svg("circle", { class: "ring-track", cx: "8", cy: "8", r: "6" }),
+      arc("done", done, 0) || "", arc("in_progress", active, done) || ""));
+}
 function renderProjects() {
   const list = $("project-list");
-  list.replaceChildren(...state.projects.map((p) => h("li", {},
-    h("button", { type: "button", "aria-current": state.project && p.id === state.project.id ? "true" : "false",
-      onclick: guard(() => selectProject(p.id)) },
-      h("span", { class: "project-name" }, p.name),
-      state.counts[p.id] && countTotal(state.counts[p.id]) > 0 && railSegments(state.counts[p.id], "rail mini")))));
-  if (!state.projects.length) list.append(h("li", { class: "muted" }, "No projects yet."));
+  list.replaceChildren(...state.projects.map((p) => {
+    const c = state.counts[p.id];
+    const summary = c ? (countTotal(c) ? `${c.done} of ${countTotal(c)} done` : "no tasks") : "";
+    return h("li", {},
+      h("button", { type: "button", class: "nav-item", "aria-current": state.project && p.id === state.project.id ? "page" : "false",
+        onclick: guard(async () => { setNav(false); await selectProject(p.id); }) },
+        progressRing(c),
+        h("span", { class: "project-name" }, p.name),
+        summary && h("span", { class: "sr-only" }, `, ${summary}`)));
+  }));
+  if (!state.projects.length) list.append(h("li", { class: "muted nav-empty" }, "No projects yet."));
+}
+function renderCrumb() {
+  $("crumb-project").textContent = state.project ? state.project.name : "";
+  document.querySelector(".crumb-sep").hidden = !state.project;
+  $("new-task-open").hidden = !state.project;
 }
 function renderProjectView() {
   $("no-project").hidden = Boolean(state.project);
   $("project-view").hidden = !state.project;
-  if (!state.project) return;
+  renderCrumb();
+  if (!state.project) { closePopovers(); return; }
   renderProjectHead();
   renderProgress();
   renderMembers();
@@ -275,6 +312,7 @@ function renderProjectHead() {
         state.projects = state.projects.map((x) => (x.id === updated.id ? updated : x));
         state.project = updated;
         renderProjects();
+        renderCrumb();
       }
       state.editingProject = false;
       renderProjectHead();
@@ -308,9 +346,17 @@ async function deleteProject() {
   notify(`Deleted "${p.name}".`, "info");
   await loadProjects(null);
 }
+function setNewProjectForm(open) {
+  $("new-project").hidden = !open;
+  $("new-project-toggle").setAttribute("aria-expanded", String(open));
+  if (open) $("new-project").querySelector("input").focus();
+}
+$("new-project-toggle").addEventListener("click", () => setNewProjectForm($("new-project").hidden));
 $("new-project").addEventListener("submit", formHandler(async (form, data) => {
   const project = await api("POST", "/projects", { name: data.get("name") });
   form.reset();
+  setNewProjectForm(false);
+  setNav(false);
   state.projects = [project, ...state.projects];
   await selectProject(project.id);
 }));
@@ -340,7 +386,7 @@ function renderMembers() {
     h("summary", {}, `Members (${state.membersTotal})`),
     h("ul", { class: "member-list" }, items),
     form || h("p", { class: "muted" }, "Only the project owner can add or remove members."),
-    owner && h("p", { class: "muted hint" }, "People find their ID in the top bar after signing in."));
+    owner && h("p", { class: "muted hint" }, "People find their ID under their name at the bottom of the sidebar."));
 }
 async function removeMember(userId) {
   if (!confirm(`Remove User #${userId} from this project?`)) return;
@@ -355,7 +401,8 @@ async function removeMember(userId) {
 async function loadTasks(append) {
   const f = state.filters;
   const params = new URLSearchParams({ limit: "100", offset: String(append ? state.tasks.length : 0), sort: "created_at", order: f.order });
-  for (const key of ["priority", "assignee_id", "overdue"]) if (f[key]) params.set(key, f[key]);
+  for (const key of ["priority", "assignee_id"]) if (f[key]) params.set(key, f[key]);
+  if (f.due) params.set("overdue", f.due === "overdue" ? "true" : "false");
   const page = await api("GET", `/projects/${state.project.id}/tasks?${params}`);
   state.tasks = append ? state.tasks.concat(page.items) : page.items;
   state.total = page.total;
@@ -363,14 +410,51 @@ async function loadTasks(append) {
 function memberOptions() {
   return state.members.map((m) => [String(m.user_id), m.user_id === state.me.id ? `You (#${m.user_id})` : `User #${m.user_id}`]);
 }
+/* "Due in 7 days" has no API filter: the server drops overdue tasks, the client keeps the next 7 days. */
+function visibleTasks() {
+  if (state.filters.due !== "week") return state.tasks;
+  const now = Date.now();
+  return state.tasks.filter((t) => {
+    if (!t.due_at || t.status === "done") return false;
+    const due = parseUtc(t.due_at).getTime();
+    return due >= now && due <= now + WEEK_MS;
+  });
+}
+function filterLabel(key, value) {
+  if (key === "priority") return `Priority: ${labelOf(PRIORITIES, value)}`;
+  if (key === "assignee_id") return `Assignee: ${personName(Number(value))}`;
+  return labelOf(DUE_FILTERS, value);
+}
+async function setFilter(key, value) {
+  const focusKey = document.activeElement && document.activeElement.dataset.focusKey;
+  state.filters[key] = value;
+  await loadTasks(false);
+  renderFilters();
+  renderBoard();
+  const again = focusKey && document.querySelector(`[data-focus-key="${focusKey}"]`);
+  (again || $("filter-open")).focus();
+}
 function renderFilters() {
   const f = state.filters;
-  const onChange = (key) => guard(async (event) => { f[key] = event.target.value; await loadTasks(false); renderBoard(); });
-  $("filters").replaceChildren(
-    h("label", {}, "Priority", select("priority", [["", "Any"], ...PRIORITIES], f.priority, { onchange: onChange("priority") })),
-    h("label", {}, "Assignee", select("assignee_id", [["", "Anyone"], ...memberOptions()], f.assignee_id, { onchange: onChange("assignee_id") })),
-    h("label", {}, "Due", select("overdue", [["", "Any"], ["true", "Overdue only"], ["false", "Not overdue"]], f.overdue, { onchange: onChange("overdue") })),
-    h("label", {}, "Order", select("order", [["desc", "Newest first"], ["asc", "Oldest first"]], f.order, { onchange: onChange("order") })));
+  const quick = [["Overdue", "due", "overdue"], ["Due in 7 days", "due", "week"],
+    ["Assigned to me", "assignee_id", String(state.me.id)], ["High priority", "priority", "high"]];
+  const field = (text, key, options) => h("label", {}, text, select(key, options, f[key],
+    { "data-focus-key": key, onchange: guard((event) => setFilter(key, event.target.value)) }));
+  $("filter-pop").replaceChildren(
+    h("p", { class: "pop-label", id: "quick-label" }, "Quick filters"),
+    h("div", { class: "quick", role: "group", "aria-labelledby": "quick-label" }, quick.map(([text, key, value], i) =>
+      h("button", { type: "button", class: "chip", "aria-pressed": String(f[key] === value), "data-focus-key": `quick-${i}`,
+        onclick: guard(() => setFilter(key, f[key] === value ? "" : value)) }, text))),
+    h("div", { class: "field-grid" },
+      field("Priority", "priority", [["", "Any"], ...PRIORITIES]),
+      field("Assignee", "assignee_id", [["", "Anyone"], ...memberOptions()]),
+      h("div", { class: "span-2" }, field("Due", "due", DUE_FILTERS))));
+  const active = ["priority", "assignee_id", "due"].filter((key) => f[key]);
+  $("filter-pills").replaceChildren(...active.map((key) => h("li", {},
+    h("button", { type: "button", class: "pill", "aria-label": `Remove filter ${filterLabel(key, f[key])}`,
+      onclick: guard(() => setFilter(key, "")) }, filterLabel(key, f[key]), h("span", { class: "pill-x", "aria-hidden": "true" }, "×")))));
+  $("filter-open").classList.toggle("has-filters", active.length > 0);
+  $("order-select").value = f.order;
   renderNewTaskAssignee();
 }
 function renderNewTaskAssignee() {
@@ -380,21 +464,27 @@ function renderNewTaskAssignee() {
   el.replaceChildren(...options.map(([v, text]) => h("option", { value: v }, text)));
   el.value = options.some(([v]) => v === previous) ? previous : "";
 }
-const filtersActive = () => Boolean(state.filters.priority || state.filters.assignee_id || state.filters.overdue);
+const filtersActive = () => Boolean(state.filters.priority || state.filters.assignee_id || state.filters.due);
 async function clearFilters() {
-  Object.assign(state.filters, { priority: "", assignee_id: "", overdue: "" });
+  Object.assign(state.filters, { priority: "", assignee_id: "", due: "" });
   await loadTasks(false);
   renderFilters();
   renderBoard();
 }
 function renderFilterStatus() {
   const box = $("filter-status");
-  box.hidden = !filtersActive();
-  if (box.hidden) { box.replaceChildren(); return; }
-  const n = state.total;
-  const text = n ? `Filters on: ${n} matching ${n === 1 ? "task" : "tasks"}. Tasks that don't match are hidden.` : "No tasks match the current filters.";
-  box.replaceChildren(h("span", {}, text), h("button", { type: "button", onclick: guard(clearFilters) }, "Clear filters"));
+  if (!filtersActive()) { box.replaceChildren(); return; }
+  const n = state.filters.due === "week" ? visibleTasks().length : state.total;
+  const c = state.counts[state.project.id];
+  const of = c ? ` of ${countTotal(c)}` : "";
+  const text = n ? `${n}${of} ${n === 1 && !of ? "task" : "tasks"} match` : "No tasks match these filters.";
+  box.replaceChildren(h("span", {}, text), h("button", { type: "button", class: "link", onclick: guard(clearFilters) }, "Clear filters"));
 }
+$("order-select").addEventListener("change", guard(async (event) => {
+  state.filters.order = event.target.value;
+  await loadTasks(false);
+  renderBoard();
+}));
 function taskCard(t) {
   const overdue = isOverdue(t);
   const [nextStatus, nextLabel] = NEXT_STEP[t.status];
@@ -409,13 +499,13 @@ function taskCard(t) {
 function renderBoard() {
   renderFilterStatus();
   const tabs = STATUSES.map(([status, text]) => {
-    const count = state.tasks.filter((t) => t.status === status).length;
+    const count = visibleTasks().filter((t) => t.status === status).length;
     return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
       onclick: () => { state.column = status; renderBoard(); } }, `${text} (${count})`);
   });
   $("col-tabs").replaceChildren(...tabs);
   $("board").replaceChildren(...STATUSES.map(([status, text]) => {
-    const tasks = state.tasks.filter((t) => t.status === status);
+    const tasks = visibleTasks().filter((t) => t.status === status);
     return h("section", { class: `column${state.column === status ? " is-active" : ""}`, "data-status": status, "aria-label": text },
       h("div", { class: "column-head" }, h("h2", {}, text), h("span", { class: "mono muted" }, String(tasks.length))),
       tasks.length ? h("ul", { class: "cards" }, tasks.map(taskCard)) : h("p", { class: "column-empty" }, EMPTY_COLUMN[status]));
@@ -463,10 +553,10 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
   const created = await api("POST", `/projects/${state.project.id}/tasks`, body);
   bumpCount(null, created.status);
   form.reset();
+  closePopovers(true);
   await loadTasks(false);
   state.column = "todo";
   renderBoard();
-  form.querySelector("input").focus();
   const card = $("board").querySelector(`.card[data-id="${created.id}"]`);
   if (card) {
     card.classList.add("is-new");
@@ -611,6 +701,65 @@ for (const button of document.querySelectorAll("[data-theme-choice]")) {
   button.addEventListener("click", () => setTheme(button.dataset.themeChoice));
 }
 renderThemeSwitch();
+
+/* Shell: popovers, mobile navigation drawer, shortcuts */
+const POPOVER_BUTTONS = ["new-task-open", "filter-open"];
+const panelOf = (buttonId) => $($(buttonId).getAttribute("aria-controls"));
+function setPopover(buttonId, open) {
+  panelOf(buttonId).hidden = !open;
+  $(buttonId).setAttribute("aria-expanded", String(open));
+}
+function openPopover(buttonId) {
+  closePopovers();
+  setPopover(buttonId, true);
+  const first = panelOf(buttonId).querySelector("input, select, button");
+  if (first) first.focus();
+}
+function closePopovers(restoreFocus = false) {
+  for (const id of POPOVER_BUTTONS) {
+    if (panelOf(id).hidden) continue;
+    setPopover(id, false);
+    if (restoreFocus) $(id).focus();
+  }
+}
+for (const id of POPOVER_BUTTONS) {
+  $(id).addEventListener("click", () => (panelOf(id).hidden ? openPopover(id) : closePopovers()));
+}
+$("new-task-cancel").addEventListener("click", () => closePopovers(true));
+document.addEventListener("pointerdown", (event) => {
+  for (const id of POPOVER_BUTTONS) {
+    if (!panelOf(id).hidden && !panelOf(id).contains(event.target) && !$(id).contains(event.target)) setPopover(id, false);
+  }
+});
+function setNav(open) {
+  const wasOpen = $("sidebar").classList.contains("is-open");
+  $("sidebar").classList.toggle("is-open", open);
+  $("nav-backdrop").hidden = !open;
+  $("nav-open").setAttribute("aria-expanded", String(open));
+  $("main").inert = open;
+  if (open) $("nav-close").focus();
+  else if (wasOpen && narrowScreen.matches) $("nav-open").focus();
+}
+$("nav-open").addEventListener("click", () => setNav(true));
+$("nav-close").addEventListener("click", () => setNav(false));
+$("nav-backdrop").addEventListener("click", () => setNav(false));
+narrowScreen.addEventListener("change", () => setNav(false));
+const isTyping = (el) => Boolean(el && el.closest && el.closest("input, textarea, select, [contenteditable]"));
+document.addEventListener("keydown", (event) => {
+  if ($("app").hidden || $("task-dialog").open || event.isComposing) return;
+  if (event.key === "Escape") {
+    if (POPOVER_BUTTONS.some((id) => !panelOf(id).hidden)) { event.preventDefault(); closePopovers(true); return; }
+    if (!$("new-project").hidden && $("new-project").contains(document.activeElement)) { setNewProjectForm(false); $("new-project-toggle").focus(); return; }
+    if ($("sidebar").classList.contains("is-open")) setNav(false);
+    return;
+  }
+  if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || isTyping(event.target)) return;
+  if ((event.key.toLowerCase() === "c" || event.code === "KeyC") && state.project) {
+    event.preventDefault();
+    setNav(false);
+    openPopover("new-task-open");
+  }
+});
 
 /* Wiring */
 $("show-login").addEventListener("click", () => setAuthMode(false));

@@ -129,15 +129,18 @@ JavaScript with no build step: `frontend/index.html` plus `frontend/static/` (`a
 License). It calls `/api/v1` from the same origin, so no CORS setup is needed, and loads
 nothing from third-party servers.
 
-- Register or sign in. The top bar shows your user ID; share it so an owner can add you.
-- Create a project in the left sidebar; the owner can rename, describe or delete it and
-  add or remove members by user ID.
-- Add tasks with a priority and due date. The board groups them into To do, In progress
+- Register or sign in. Your user ID is under your name at the bottom of the sidebar; share
+  it so an owner can add you.
+- Create a project with **New project** in the sidebar; the owner can rename, describe or
+  delete it and add or remove members by user ID.
+- Add tasks with **New task** (or press <kbd>C</kbd>): title, priority, assignee and due date. The board groups them into To do, In progress
   and Done; **Start**, **Mark done** and **Reopen** move a card to the next column.
-- Filter by priority, assignee and overdue, and sort newest or oldest first.
+- **Filter** by priority, assignee or due date, with quick filters (Overdue, Due in 7 days,
+  Assigned to me, High priority). Active filters stay visible as pills you can remove.
+  Sort newest or oldest first.
 - Click a task title to edit every field, delete the task, or read and write comments.
 - Dark by default; switch between System, Light and Dark at the bottom of the sidebar.
-- Works on phones (columns become tabs) and with the keyboard.
+- Works on phones (the sidebar becomes a menu, columns become tabs) and with the keyboard.
 
 To try two users at once, sign in as each one in a separate browser tab: the session is
 kept per tab.
