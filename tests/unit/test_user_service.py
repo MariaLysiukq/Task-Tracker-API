@@ -4,13 +4,15 @@ import pytest
 from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
+from app.core.exceptions import ConflictError, ForbiddenError
 from app.core.security import verify_password
 from app.models import Project, User
 from app.repositories import user as user_repo
 from app.schemas.user import UserCreate, UserUpdate
 from app.services import auth
 from app.services import user as user_service
+
+CURRENT = SecretStr("password123")
 
 
 async def make_user(session: AsyncSession, email: str = "ann@example.com") -> User:
@@ -43,7 +45,7 @@ async def test_update_changes_only_sent_fields(db_session: AsyncSession) -> None
 async def test_update_password_stores_new_hash(db_session: AsyncSession) -> None:
     """A new password replaces the hash and the old one stops working."""
     user = await make_user(db_session)
-    data = UserUpdate(password=SecretStr("new-password"))
+    data = UserUpdate(password=SecretStr("new-password"), current_password=CURRENT)
     await user_service.update_profile(db_session, user, data)
     assert verify_password("new-password", user.hashed_password)
     assert not verify_password("password123", user.hashed_password)
@@ -52,7 +54,7 @@ async def test_update_password_stores_new_hash(db_session: AsyncSession) -> None
 async def test_update_email_to_own_email_is_allowed(db_session: AsyncSession) -> None:
     """Re-sending the current email is not a conflict."""
     user = await make_user(db_session)
-    data = UserUpdate(email="ANN@example.com")
+    data = UserUpdate(email="ANN@example.com", current_password=CURRENT)
     assert (await user_service.update_profile(db_session, user, data)).email == "ann@example.com"
 
 
@@ -60,8 +62,36 @@ async def test_update_email_taken_by_other_user_conflicts(db_session: AsyncSessi
     """Another user's email is rejected with 409."""
     user = await make_user(db_session)
     await make_user(db_session, "bob@example.com")
+    data = UserUpdate(email="bob@example.com", current_password=CURRENT)
     with pytest.raises(ConflictError):
-        await user_service.update_profile(db_session, user, UserUpdate(email="bob@example.com"))
+        await user_service.update_profile(db_session, user, data)
+
+
+async def test_wrong_current_password_is_forbidden_and_changes_nothing(
+    db_session: AsyncSession,
+) -> None:
+    """A wrong current password raises 403 and leaves email and hash unchanged."""
+    user = await make_user(db_session)
+    old_hash = user.hashed_password
+    wrong = SecretStr("wrong-password")
+    data = UserUpdate(
+        email="new@example.com", password=SecretStr("new-password"), current_password=wrong
+    )
+    with pytest.raises(ForbiddenError):
+        await user_service.update_profile(db_session, user, data)
+    assert user.email == "ann@example.com"
+    assert user.hashed_password == old_hash
+
+
+async def test_wrong_current_password_checked_before_email_conflict(
+    db_session: AsyncSession,
+) -> None:
+    """Without the right password, a taken email gives 403, not 409, so emails cannot be probed."""
+    user = await make_user(db_session)
+    await make_user(db_session, "bob@example.com")
+    data = UserUpdate(email="bob@example.com", current_password=SecretStr("wrong-password"))
+    with pytest.raises(ForbiddenError):
+        await user_service.update_profile(db_session, user, data)
 
 
 async def test_delete_account_without_projects(db_session: AsyncSession) -> None:

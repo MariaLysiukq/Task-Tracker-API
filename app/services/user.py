@@ -4,8 +4,8 @@ from pydantic import SecretStr
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError
-from app.core.security import hash_password
+from app.core.exceptions import ConflictError, ForbiddenError
+from app.core.security import hash_password, verify_password
 from app.models import User
 from app.repositories import project as project_repo
 from app.repositories import user as user_repo
@@ -13,6 +13,7 @@ from app.schemas.user import UserUpdate
 from app.services.auth import EMAIL_TAKEN
 
 OWNS_PROJECTS = "Delete your projects before deleting the account"
+WRONG_CURRENT_PASSWORD = "Current password is incorrect"  # noqa: S105 - message
 
 
 async def update_profile(session: AsyncSession, user: User, data: UserUpdate) -> User:
@@ -26,6 +27,9 @@ async def update_profile(session: AsyncSession, user: User, data: UserUpdate) ->
         Authenticated user.
     data : UserUpdate
         Fields sent by the client; a new password is stored only as a hash.
+        ``current_password`` (required by the schema for email/password changes)
+        is verified before anything else, so a wrong one reveals nothing about
+        other users' emails.
 
     Returns
     -------
@@ -34,9 +38,16 @@ async def update_profile(session: AsyncSession, user: User, data: UserUpdate) ->
 
     Raises
     ------
+    ForbiddenError
+        If ``current_password`` is sent and does not match.
     ConflictError
         If the new email belongs to another user.
     """
+    current = data.current_password
+    if current is not None and not verify_password(
+        current.get_secret_value(), user.hashed_password
+    ):
+        raise ForbiddenError(WRONG_CURRENT_PASSWORD)
     changes = data.changes()
     password = changes.pop("password", None)
     if isinstance(password, SecretStr):

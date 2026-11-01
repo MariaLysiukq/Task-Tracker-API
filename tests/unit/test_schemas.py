@@ -77,6 +77,25 @@ def test_patch_keeps_only_sent_fields() -> None:
 
 
 @pytest.mark.parametrize(
+    "payload",
+    [{"email": "new@example.com"}, {"password": "new-password"}],
+    ids=["email", "password"],
+)
+def test_user_update_requires_current_password_for_sensitive_fields(
+    payload: dict[str, str],
+) -> None:
+    """Email and password changes without ``current_password`` are invalid."""
+    with pytest.raises(ValidationError, match="current_password is required"):
+        UserUpdate.model_validate(payload)
+
+
+def test_user_update_changes_exclude_current_password() -> None:
+    """``current_password`` is checked by the service but never written to the user."""
+    update = UserUpdate.model_validate({"email": "New@Example.com", "current_password": "old-pass"})
+    assert update.changes() == {"email": "new@example.com"}
+
+
+@pytest.mark.parametrize(
     ("schema", "payload"),
     [
         (UserUpdate, {"email": None}),

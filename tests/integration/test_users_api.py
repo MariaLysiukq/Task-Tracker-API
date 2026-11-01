@@ -42,7 +42,9 @@ async def test_update_me(client: AsyncClient) -> None:
     """Only sent fields change; a new password works for the next login."""
     headers = await register_and_login(client)
     response = await client.patch(
-        ME, headers=headers, json={"full_name": "Anna", "password": "new-password"}
+        ME,
+        headers=headers,
+        json={"full_name": "Anna", "password": "new-password", "current_password": "password123"},
     )
     assert response.status_code == 200
     assert response.json()["full_name"] == "Anna"
@@ -52,20 +54,68 @@ async def test_update_me(client: AsyncClient) -> None:
         json={"email": "ann@example.com", "password": "new-password"},
     )
     assert login.status_code == 200
+    assert "password" not in response.text
+
+
+async def test_update_name_needs_no_current_password(client: AsyncClient) -> None:
+    """Changing only the full name works without ``current_password``."""
+    headers = await register_and_login(client)
+    response = await client.patch(ME, headers=headers, json={"full_name": "Anna"})
+    assert (response.status_code, response.json()["full_name"]) == (200, "Anna")
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [{"password": "new-password"}, {"email": "new@example.com"}],
+    ids=["password", "email"],
+)
+async def test_sensitive_change_without_current_password_returns_422(
+    client: AsyncClient,
+    payload: dict[str, str],
+) -> None:
+    """Email or password changes are rejected without ``current_password``."""
+    headers = await register_and_login(client)
+    response = await client.patch(ME, headers=headers, json=payload)
+    assert response.status_code == 422
+    assert "current_password" in response.text
+
+
+async def test_wrong_current_password_returns_403(client: AsyncClient) -> None:
+    """A wrong current password is refused and the old password keeps working."""
+    headers = await register_and_login(client)
+    response = await client.patch(
+        ME,
+        headers=headers,
+        json={"password": "new-password", "current_password": "wrong-password"},
+    )
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Current password is incorrect"}
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={"email": "ann@example.com", "password": "password123"},
+    )
+    assert login.status_code == 200
 
 
 async def test_update_me_taken_email_returns_409(client: AsyncClient) -> None:
     """Another user's email is a conflict."""
     headers = await register_and_login(client)
     await register_and_login(client, "bob@example.com")
-    response = await client.patch(ME, headers=headers, json={"email": "BOB@example.com"})
+    payload = {"email": "BOB@example.com", "current_password": "password123"}
+    response = await client.patch(ME, headers=headers, json=payload)
     assert response.status_code == 409
 
 
 @pytest.mark.parametrize(
     "payload",
-    [{"full_name": None}, {"email": "not-an-email"}, {"password": "short"}, {"id": 5}],
-    ids=["null-name", "bad-email", "short-password", "extra-field"],
+    [
+        {"full_name": None},
+        {"email": "not-an-email", "current_password": "password123"},
+        {"password": "short", "current_password": "password123"},
+        {"id": 5},
+        {"full_name": "Anna", "current_password": ""},
+    ],
+    ids=["null-name", "bad-email", "short-password", "extra-field", "empty-current-password"],
 )
 async def test_update_me_invalid_payload_returns_422(
     client: AsyncClient,

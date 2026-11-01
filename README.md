@@ -40,7 +40,8 @@ resource is permission-checked, so teams never see each other's data.
 
 ## Features
 
-- Registration, login (JWT bearer token) and personal profile
+- Registration, login (JWT bearer token) and personal profile; changing email or password
+  requires `current_password`
 - Projects with an `owner` and `member` roles; only the owner edits, deletes and manages members
 - Tasks with `status` (todo / in_progress / done), `priority` (low / medium / high), assignee and `due_at`
 - Filters by `status`, `priority`, `assignee_id` and `overdue`; sorting by `created_at` or `id`
@@ -196,7 +197,7 @@ All routes use the `/api/v1` prefix and, except registration and login, require
 | 200  | Read or update succeeded                                         |
 | 204  | Resource deleted                                                 |
 | 401  | Missing or invalid token                                         |
-| 403  | Authenticated, but not allowed (for example a member editing a project) |
+| 403  | Authenticated, but not allowed (for example a member editing a project, or a wrong `current_password`) |
 | 404  | Not found, or not visible to you                                 |
 | 409  | Conflict (duplicate email or member, owner deleting account with projects) |
 | 422  | Invalid input                                                    |
@@ -245,6 +246,7 @@ tests/
 - The login/registration rate limit is kept in process memory: each Uvicorn worker counts
   separately and counts reset on restart. Behind a reverse proxy, run Uvicorn with
   `--proxy-headers --forwarded-allow-ips=<proxy IP>`, otherwise all clients share the proxy's limit.
+- Wrong `current_password` attempts on `PATCH /users/me` are not rate limited; they need a valid token.
 
 ## Contributing
 
