@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/MariaLysiukq/Task-Tracker-API/actions/workflows/ci.yml/badge.svg)](https://github.com/MariaLysiukq/Task-Tracker-API/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.12-3776AB?logo=python&logoColor=white)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.162-009688?logo=fastapi&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Neon-4169E1?logo=postgresql&logoColor=white)
 ![Ruff](https://img.shields.io/badge/lint-ruff-D7FF64?logo=ruff&logoColor=black)
 ![mypy](https://img.shields.io/badge/types-mypy%20strict-2A6DB2)
@@ -17,7 +17,8 @@
 
 A REST API for team task tracking. Users create projects, invite members, assign tasks
 with status, priority and due dates, and discuss them in comments. Every nested
-resource is permission-checked, so teams never see each other's data.
+resource is permission-checked, so teams never see each other's data. A small web
+client served at `/` puts the same API behind a task board.
 
 <!-- Screenshot: Swagger UI overview (save as docs/screenshots/swagger.png) -->
 <p align="center">
@@ -117,6 +118,26 @@ The container applies migrations on start. The web client is at
 <http://localhost:8000/docs>.
 
 ## Usage
+
+### Web client
+
+Open <http://localhost:8000> after starting the server. The page is a single file,
+`frontend/index.html` (HTML, CSS and JavaScript, no build step), and calls `/api/v1` from
+the same origin, so no CORS setup is needed.
+
+- Register or sign in. The top bar shows your user ID; share it so an owner can add you.
+- Create a project in the left sidebar; the owner can rename, describe or delete it and
+  add or remove members by user ID.
+- Add tasks with a priority and due date. The board groups them into To do, In progress
+  and Done; **Start**, **Mark done** and **Reopen** move a card to the next column.
+- Filter by priority, assignee and overdue, and sort newest or oldest first.
+- Click a task title to edit every field, delete the task, or read and write comments.
+- Works on phones (columns become tabs), in dark mode and with the keyboard.
+
+To try two users at once, sign in as each one in a separate browser tab: the session is
+kept per tab.
+
+### API with curl
 
 The main scenario with `curl`, runnable as is against a fresh database: the owner
 creates a project and adds a member, the member creates a task and a comment and
@@ -226,12 +247,14 @@ CI runs the same hooks, the test suite (coverage gate 80%) and a Docker build on
 ```text
 app/
 ├── api/v1/         # Routers (HTTP layer)
+├── api/frontend.py # Serves the web client at /
 ├── services/       # Business rules
 ├── repositories/   # Database queries
 ├── models/         # SQLAlchemy models
 ├── schemas/        # Pydantic schemas
 ├── core/           # Config, database, security, errors
 └── _detail/        # Constants and helpers
+frontend/           # Web client (index.html)
 alembic/            # Migrations
 scripts/            # Custom pre-commit hooks
 tests/
@@ -250,6 +273,9 @@ tests/
   separately and counts reset on restart. Behind a reverse proxy, run Uvicorn with
   `--proxy-headers --forwarded-allow-ips=<proxy IP>`, otherwise all clients share the proxy's limit.
 - Wrong `current_password` attempts on `PATCH /users/me` are not rate limited; they need a valid token.
+- The web client shows other people as `User #id`: the API has no endpoint to look up
+  another user's name. It keeps the token in `sessionStorage`, so closing the tab signs you out.
+  It has no profile page; use `/docs` to change your email, password or name.
 
 ## Contributing
 
