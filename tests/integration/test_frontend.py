@@ -89,6 +89,17 @@ async def test_shell_controls_are_labelled(client: AsyncClient) -> None:
     assert 'id="filter-pills" aria-label="Active filters"' in html
 
 
+async def test_views_can_be_switched(client: AsyncClient) -> None:
+    """The page offers My tasks and a Board/List layout switch with pressed states."""
+    html = (await client.get("/")).text
+    assert 'id="my-tasks" aria-current="false"' in html
+    assert 'id="layout-toggle" role="group" aria-label="Layout"' in html
+    assert 'data-layout="board" aria-pressed="true"' in html
+    assert 'data-layout="list" aria-pressed="false"' in html
+    assert 'id="list" hidden' in html
+    assert 'id="mine-view"' in html
+
+
 @pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
 async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
     """The page and its assets are never reused from cache without a check."""

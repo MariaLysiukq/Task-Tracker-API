@@ -133,8 +133,13 @@ nothing from third-party servers.
   it so an owner can add you.
 - Create a project with **New project** in the sidebar; the owner can rename, describe or
   delete it and add or remove members by user ID.
-- Add tasks with **New task** (or press <kbd>C</kbd>): title, priority, assignee and due date. The board groups them into To do, In progress
-  and Done; **Start**, **Mark done** and **Reopen** move a card to the next column.
+- Add tasks with **New task** (or press <kbd>C</kbd>): title, priority, assignee and due date.
+- **Board** groups tasks into To do, In progress and Done columns; **Start**, **Mark done**
+  and **Reopen** move a card to the next column. **List** shows the same tasks as compact
+  rows grouped by status. Each task shows its status, priority, `TT-<id>`, due date and
+  assignee.
+- **My tasks** in the sidebar lists the tasks assigned to you in every project, grouped by
+  project.
 - **Filter** by priority, assignee or due date, with quick filters (Overdue, Due in 7 days,
   Assigned to me, High priority). Active filters stay visible as pills you can remove.
   Sort newest or oldest first.

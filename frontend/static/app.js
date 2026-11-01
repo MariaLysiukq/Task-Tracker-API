@@ -6,6 +6,11 @@ const NEXT_STEP = { todo: ["in_progress", "Start"], in_progress: ["done", "Mark 
 const DUE_FILTERS = [["", "Any"], ["overdue", "Overdue"], ["week", "Due in 7 days"], ["not_overdue", "Not overdue"]];
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 const EMPTY_COLUMN = { todo: "Nothing to do.", in_progress: "Nothing in progress.", done: "Nothing finished yet." };
+const LIST_ORDER = ["in_progress", "todo", "done"];
+const prefs = {
+  get(key) { try { return localStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch { /* storage unavailable */ } },
+};
 const store = {
   get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
   set(key, value) { try { value == null ? sessionStorage.removeItem(key) : sessionStorage.setItem(key, String(value)); } catch { /* storage unavailable */ } },
@@ -14,7 +19,7 @@ const state = {
   token: store.get("tt.token"), me: null, projects: [], project: null, members: [],
   tasks: [], total: 0, filters: { priority: "", assignee_id: "", due: "", order: "desc" },
   task: null, comments: [], commentsTotal: 0, editingComment: null, editingProject: false, column: "todo",
-  counts: {},
+  counts: {}, view: "project", layout: prefs.get("tt.layout") === "list" ? "list" : "board", mine: null,
 };
 const $ = (id) => document.getElementById(id);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -49,6 +54,12 @@ function select(name, options, value, attrs = {}) {
 }
 const labelOf = (pairs, value) => (pairs.find(([v]) => v === value) || [value, value])[1];
 const parseUtc = (iso) => new Date(/([zZ]|[+-]\d\d:?\d\d)$/.test(iso) ? iso : iso + "Z");
+const fmtShort = (iso) => {
+  const d = parseUtc(iso);
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return new Intl.DateTimeFormat(undefined, sameYear ? { month: "short", day: "numeric" } : { dateStyle: "medium" }).format(d);
+};
+const initialOf = (name) => (name.trim()[0] || "?").toUpperCase();
 const fmtDate = (iso) => new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(parseUtc(iso));
 const toLocalInput = (iso) => { if (!iso) return ""; const d = parseUtc(iso); return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
 const fromLocalInput = (value) => (value ? new Date(value).toISOString() : null);
@@ -155,6 +166,9 @@ function signOut(message) {
   state.project = null;
   state.projects = [];
   state.counts = {};
+  state.view = "project";
+  state.mine = null;
+  $("mine-view").replaceChildren();
   $("progress").replaceChildren();
   closePopovers();
   setNav(false);
@@ -175,7 +189,7 @@ async function boot() {
   $("app").hidden = false;
   $("me-name").textContent = state.me.full_name;
   $("me-id").textContent = `ID ${state.me.id}`;
-  $("me-avatar").textContent = (state.me.full_name.trim()[0] || "?").toUpperCase();
+  $("me-avatar").textContent = initialOf(state.me.full_name);
   await loadProjects(Number(store.get("tt.project")) || null);
 }
 
@@ -190,6 +204,7 @@ async function loadProjects(preferredId) {
 }
 async function selectProject(id) {
   state.project = state.projects.find((p) => p.id === id) || null;
+  state.view = "project";
   state.editingProject = false;
   Object.assign(state.filters, { priority: "", assignee_id: "", due: "" });
   closePopovers();
@@ -273,7 +288,7 @@ function renderProjects() {
     const c = state.counts[p.id];
     const summary = c ? (countTotal(c) ? `${c.done} of ${countTotal(c)} done` : "no tasks") : "";
     return h("li", {},
-      h("button", { type: "button", class: "nav-item", "aria-current": state.project && p.id === state.project.id ? "page" : "false",
+      h("button", { type: "button", class: "nav-item", "aria-current": state.view === "project" && state.project && p.id === state.project.id ? "page" : "false",
         onclick: guard(async () => { setNav(false); await selectProject(p.id); }) },
         progressRing(c),
         h("span", { class: "project-name" }, p.name),
@@ -282,15 +297,25 @@ function renderProjects() {
   if (!state.projects.length) list.append(h("li", { class: "muted nav-empty" }, "No projects yet."));
 }
 function renderCrumb() {
-  $("crumb-project").textContent = state.project ? state.project.name : "";
-  document.querySelector(".crumb-sep").hidden = !state.project;
-  $("new-task-open").hidden = !state.project;
+  const mine = state.view === "mine";
+  const inProject = !mine && Boolean(state.project);
+  $("crumb-root").hidden = mine;
+  document.querySelector(".crumb-sep").hidden = !inProject;
+  $("crumb-project").textContent = mine ? "My tasks" : inProject ? state.project.name : "";
+  $("new-task-open").hidden = !inProject;
+  $("layout-toggle").hidden = !inProject;
+}
+function renderView() {
+  const mine = state.view === "mine";
+  $("mine-view").hidden = !mine;
+  $("no-project").hidden = mine || Boolean(state.project);
+  $("project-view").hidden = mine || !state.project;
+  $("my-tasks").setAttribute("aria-current", mine ? "page" : "false");
+  renderCrumb();
 }
 function renderProjectView() {
-  $("no-project").hidden = Boolean(state.project);
-  $("project-view").hidden = !state.project;
-  renderCrumb();
-  if (!state.project) { closePopovers(); return; }
+  renderView();
+  if (state.view === "mine" || !state.project) { closePopovers(); return; }
   renderProjectHead();
   renderProgress();
   renderMembers();
@@ -485,31 +510,87 @@ $("order-select").addEventListener("change", guard(async (event) => {
   await loadTasks(false);
   renderBoard();
 }));
-function taskCard(t) {
+/* Task visuals: status circle (from the ring logo), priority bars, ID, assignee avatar, due date */
+function statusIcon(status) {
+  const ring = () => svg("circle", { class: "st-ring", cx: "8", cy: "8", r: "6" });
+  const parts = {
+    todo: [ring()],
+    in_progress: [ring(), svg("path", { class: "st-fill", d: "M8 4.5a3.5 3.5 0 0 1 0 7z" })],
+    done: [svg("circle", { class: "st-solid", cx: "8", cy: "8", r: "7" }), svg("path", { class: "st-check", d: "M5.2 8.2l1.9 1.9 3.7-3.9" })],
+  };
+  return svg("svg", { class: `status-icon st-${status}`, viewBox: "0 0 16 16", width: "14", height: "14", "aria-hidden": "true" }, ...parts[status]);
+}
+function priorityIcon(priority) {
+  const level = { low: 1, medium: 2, high: 3 }[priority];
+  const text = `${labelOf(PRIORITIES, priority)} priority`;
+  return h("span", { class: `prio-icon prio-icon-${priority}`, title: text },
+    svg("svg", { viewBox: "0 0 16 16", width: "14", height: "14", "aria-hidden": "true" }, ...[0, 1, 2].map((i) =>
+      svg("rect", { class: i < level ? "bar on" : "bar", x: String(2 + i * 4.5), y: String(10 - i * 3.5), width: "3", height: String(4 + i * 3.5), rx: "1" }))),
+    h("span", { class: "sr-only" }, text));
+}
+const taskId = (t) => h("span", { class: "task-id" }, `TT-${t.id}`);
+function avatar(userId) {
+  if (!userId) return h("span", { class: "avatar sm empty", title: "Unassigned" }, h("span", { class: "sr-only" }, "Unassigned"));
+  const me = state.me && userId === state.me.id;
+  const name = me ? `${state.me.full_name} (you)` : `User #${userId}`;
+  return h("span", { class: "avatar sm", title: name },
+    h("span", { "aria-hidden": "true" }, me ? initialOf(state.me.full_name) : String(userId)),
+    h("span", { class: "sr-only" }, `Assigned to ${me ? "you" : name}`));
+}
+function dueChip(t) {
+  if (!t.due_at) return null;
   const overdue = isOverdue(t);
+  return h("span", { class: `due${overdue ? " overdue" : ""}`, title: `${overdue ? "Overdue, was due" : "Due"} ${fmtDate(t.due_at)}` },
+    h("span", { class: "sr-only" }, overdue ? "Overdue, was due " : "Due "), fmtShort(t.due_at));
+}
+function taskCard(t) {
   const [nextStatus, nextLabel] = NEXT_STEP[t.status];
-  return h("li", { class: `card prio-${t.priority}`, "data-id": String(t.id) },
+  return h("li", { class: "card", "data-id": String(t.id) },
+    h("div", { class: "card-top" }, statusIcon(t.status), taskId(t), avatar(t.assignee_id)),
     h("button", { type: "button", class: "card-title", onclick: guard(() => openTask(t.id)) }, t.title),
-    h("p", { class: "card-meta" },
-      h("span", {}, `${labelOf(PRIORITIES, t.priority)} priority`),
-      t.due_at && h("span", { class: overdue ? "overdue" : "" }, overdue ? `Overdue since ${fmtDate(t.due_at)}` : `Due ${fmtDate(t.due_at)}`),
-      t.assignee_id && h("span", {}, `Assigned to ${personName(t.assignee_id)}`)),
-    h("button", { type: "button", class: "card-move", onclick: guard(() => moveTask(t, nextStatus)) }, nextLabel));
+    h("div", { class: "card-meta" }, priorityIcon(t.priority), dueChip(t),
+      h("button", { type: "button", class: "card-move ghost small", onclick: guard(() => moveTask(t, nextStatus)) }, nextLabel)));
+}
+function taskRow(t, onOpen) {
+  return h("li", { class: `row${t.status === "done" ? " is-done" : ""}`, "data-id": String(t.id) },
+    h("button", { type: "button", class: "row-main", onclick: guard(() => onOpen(t)) },
+      priorityIcon(t.priority), taskId(t), statusIcon(t.status), h("span", { class: "sr-only" }, labelOf(STATUSES, t.status)),
+      h("span", { class: "row-title" }, t.title), dueChip(t), avatar(t.assignee_id)));
+}
+function taskGroup(icon, title, items, onOpen, extra = null) {
+  return h("section", { class: "group", "aria-label": title },
+    h("div", { class: "group-head" }, icon, h("h2", { class: "group-title" }, title), h("span", { class: "mono muted" }, String(items.length)), extra),
+    h("ul", { class: "rows" }, items.map((t) => taskRow(t, onOpen))));
+}
+const byStatus = (items) => items.slice().sort((a, b) => LIST_ORDER.indexOf(a.status) - LIST_ORDER.indexOf(b.status));
+function renderList() {
+  const tasks = visibleTasks();
+  const groups = LIST_ORDER.map((status) => [status, tasks.filter((t) => t.status === status)]).filter(([, items]) => items.length);
+  const empty = h("p", { class: "column-empty" }, filtersActive() ? "No tasks match these filters." : "No tasks yet. Press C to add one.");
+  $("list").replaceChildren(...(groups.length
+    ? groups.map(([status, items]) => taskGroup(statusIcon(status), labelOf(STATUSES, status), items, (t) => openTask(t.id)))
+    : [empty]));
 }
 function renderBoard() {
   renderFilterStatus();
-  const tabs = STATUSES.map(([status, text]) => {
-    const count = visibleTasks().filter((t) => t.status === status).length;
-    return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
-      onclick: () => { state.column = status; renderBoard(); } }, `${text} (${count})`);
-  });
-  $("col-tabs").replaceChildren(...tabs);
-  $("board").replaceChildren(...STATUSES.map(([status, text]) => {
-    const tasks = visibleTasks().filter((t) => t.status === status);
-    return h("section", { class: `column${state.column === status ? " is-active" : ""}`, "data-status": status, "aria-label": text },
-      h("div", { class: "column-head" }, h("h2", {}, text), h("span", { class: "mono muted" }, String(tasks.length))),
-      tasks.length ? h("ul", { class: "cards" }, tasks.map(taskCard)) : h("p", { class: "column-empty" }, EMPTY_COLUMN[status]));
-  }));
+  const list = state.layout === "list";
+  $("board").hidden = list;
+  $("list").hidden = !list;
+  $("col-tabs").hidden = list;
+  if (list) renderList();
+  else {
+    $("col-tabs").replaceChildren(...STATUSES.map(([status, text]) => {
+      const count = visibleTasks().filter((t) => t.status === status).length;
+      return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
+        onclick: () => { state.column = status; renderBoard(); } }, statusIcon(status), `${text} (${count})`);
+    }));
+    $("board").replaceChildren(...STATUSES.map(([status, text]) => {
+      const tasks = visibleTasks().filter((t) => t.status === status);
+      return h("section", { class: `column${state.column === status ? " is-active" : ""}`, "data-status": status, "aria-label": text },
+        h("div", { class: "column-head" }, statusIcon(status), h("h2", {}, text), h("span", { class: "mono muted" }, String(tasks.length))),
+        tasks.length ? h("ul", { class: "cards" }, tasks.map(taskCard)) : h("p", { class: "column-empty" }, EMPTY_COLUMN[status]));
+    }));
+  }
   const more = $("more");
   more.replaceChildren();
   if (state.tasks.length < state.total) {
@@ -517,6 +598,55 @@ function renderBoard() {
       `Load more tasks (${state.tasks.length} of ${state.total} shown)`));
   }
 }
+function renderLayoutToggle() {
+  for (const button of document.querySelectorAll("[data-layout]")) {
+    button.setAttribute("aria-pressed", String(button.dataset.layout === state.layout));
+  }
+}
+for (const button of document.querySelectorAll("[data-layout]")) {
+  button.addEventListener("click", () => {
+    state.layout = button.dataset.layout;
+    prefs.set("tt.layout", state.layout);
+    renderLayoutToggle();
+    renderBoard();
+  });
+}
+renderLayoutToggle();
+
+/* My tasks: tasks assigned to me in every project (no cross-project endpoint, so one request per project) */
+async function openMyTasks() {
+  state.view = "mine";
+  closePopovers();
+  setNav(false);
+  renderProjects();
+  renderView();
+  $("mine-view").replaceChildren(h("h1", {}, "My tasks"), h("p", { class: "muted" }, "Loading your tasks…"));
+  const pages = [];
+  for (let i = 0; i < state.projects.length; i += 5) {
+    const chunk = state.projects.slice(i, i + 5);
+    pages.push(...await Promise.all(chunk.map((p) =>
+      api("GET", `/projects/${p.id}/tasks?assignee_id=${state.me.id}&limit=100&sort=created_at&order=desc`))));
+  }
+  state.mine = state.projects.map((project, i) => ({ project, page: pages[i] })).filter((g) => g.page.total > 0);
+  if (state.view === "mine") renderMine();
+}
+async function openFromMine(t) {
+  await selectProject(t.project_id);
+  await openTask(t.id);
+}
+function renderMine() {
+  const all = state.mine.flatMap((g) => g.page.items);
+  const open = all.filter((t) => t.status !== "done").length;
+  const where = `${state.mine.length} ${state.mine.length === 1 ? "project" : "projects"}`;
+  const summary = all.length ? `${open} open, ${all.length - open} done, in ${where}.` : "Nothing is assigned to you yet. Tasks assigned to you in any project show up here.";
+  $("mine-view").replaceChildren(
+    h("div", { class: "stack" }, h("h1", {}, "My tasks"), h("p", { class: "muted" }, summary)),
+    ...state.mine.map((g) => h("div", { class: "stack" },
+      taskGroup(progressRing(state.counts[g.project.id]), g.project.name, byStatus(g.page.items), openFromMine,
+        h("button", { type: "button", class: "ghost small group-action", onclick: guard(() => selectProject(g.project.id)) }, "Open project")),
+      g.page.total > g.page.items.length && h("p", { class: "muted note" }, `Showing the newest ${g.page.items.length} of ${g.page.total}.`))));
+}
+$("my-tasks").addEventListener("click", guard(openMyTasks));
 function cardRects() {
   const rects = new Map();
   for (const el of $("board").querySelectorAll(".card")) rects.set(el.dataset.id, el.getBoundingClientRect());
@@ -557,7 +687,7 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
   await loadTasks(false);
   state.column = "todo";
   renderBoard();
-  const card = $("board").querySelector(`.card[data-id="${created.id}"]`);
+  const card = document.querySelector(`#board:not([hidden]) .card[data-id="${created.id}"], #list:not([hidden]) .row[data-id="${created.id}"]`);
   if (card) {
     card.classList.add("is-new");
     card.scrollIntoView({ block: "nearest", behavior: reducedMotion.matches ? "auto" : "smooth" });
@@ -571,7 +701,7 @@ $("new-task").addEventListener("submit", formHandler(async (form, data) => {
 
 /* Task dialog */
 async function openTask(id) {
-  state.task = state.tasks.find((t) => t.id === id);
+  state.task = state.tasks.find((t) => t.id === id) || await api("GET", `/tasks/${id}`);
   state.editingComment = null;
   await loadComments();
   renderSheet();
@@ -754,7 +884,7 @@ document.addEventListener("keydown", (event) => {
     return;
   }
   if (event.ctrlKey || event.metaKey || event.altKey || event.repeat || isTyping(event.target)) return;
-  if ((event.key.toLowerCase() === "c" || event.code === "KeyC") && state.project) {
+  if ((event.key.toLowerCase() === "c" || event.code === "KeyC") && state.project && state.view === "project") {
     event.preventDefault();
     setNav(false);
     openPopover("new-task-open");
