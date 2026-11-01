@@ -155,11 +155,11 @@ To try two users at once, sign in as each one in a separate browser tab: the ses
 kept per tab.
 
 <p align="center">
-  <img src="docs/screenshots/web-board.png" alt="Task board with To do, In progress and Done columns" width="800" />
+  <img src="docs/screenshots/web-board.png" alt="Board in the dark theme: sidebar with project progress rings, the progress rail, and task cards with status, priority, ID, due date and assignee" width="800" />
 </p>
 <p align="center">
-  <img src="docs/screenshots/web-task.png" alt="Task editor with comments open beside the board" width="464" height="290" />
-  <img src="docs/screenshots/web-mobile-dark.png" alt="Board on a phone in dark mode, columns shown as tabs" width="314" height="290" />
+  <img src="docs/screenshots/web-task.png" alt="Task side panel in the light theme with status, priority, assignee and due date rows and three comments" width="560" height="350" />
+  <img src="docs/screenshots/web-mobile-dark.png" alt="List view on a phone in the dark theme, tasks grouped by status" width="162" height="350" />
 </p>
 
 ### API with curl
