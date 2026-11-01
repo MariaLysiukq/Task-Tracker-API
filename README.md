@@ -50,6 +50,8 @@ resource is permission-checked, so teams never see each other's data.
 - Cascading deletes; removed members' tasks stay with `assignee_id = null`
 - Passwords stored as Argon2 hashes; all timestamps are timezone-aware UTC
 - Login and registration limited to 5 requests per minute per client IP (429 above that)
+- Web client at `/` (`frontend/index.html`, no build step): sign in, projects, members,
+  a task board by status, a task editor and comments
 
 ## Tech stack
 
@@ -110,8 +112,9 @@ uvicorn app.main:app --reload
 docker compose up --build
 ```
 
-The container applies migrations on start. The API is available at
-<http://localhost:8000>, interactive docs at <http://localhost:8000/docs>.
+The container applies migrations on start. The web client is at
+<http://localhost:8000>, the API under <http://localhost:8000/api/v1>, interactive docs at
+<http://localhost:8000/docs>.
 
 ## Usage
 
