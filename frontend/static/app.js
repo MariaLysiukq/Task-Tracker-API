@@ -594,6 +594,19 @@ function renderList() {
     ? groups.map(([status, items]) => taskGroup(statusIcon(status), labelOf(STATUSES, status), items, (t) => openTask(t.id)))
     : [empty]));
 }
+/* Phone column tabs: arrows, Home and End move between columns; only the active tab is in the Tab order. */
+const TAB_STEPS = { ArrowLeft: -1, ArrowRight: 1, Home: "first", End: "last" };
+$("col-tabs").addEventListener("keydown", (event) => {
+  const step = TAB_STEPS[event.key];
+  if (step === undefined) return;
+  event.preventDefault();
+  const i = STATUSES.findIndex(([status]) => status === state.column);
+  const last = STATUSES.length - 1;
+  const next = step === "first" ? 0 : step === "last" ? last : (i + step + STATUSES.length) % STATUSES.length;
+  state.column = STATUSES[next][0];
+  renderBoard();
+  $(`tab-${state.column}`).focus();
+});
 function renderBoard() {
   renderFilterStatus();
   const list = state.layout === "list";
@@ -604,12 +617,14 @@ function renderBoard() {
   else {
     $("col-tabs").replaceChildren(...STATUSES.map(([status, text]) => {
       const count = visibleTasks().filter((t) => t.status === status).length;
-      return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
-        onclick: () => { state.column = status; renderBoard(); } }, statusIcon(status), h("span", {}, text), h("span", { class: "tab-count" }, String(count)));
+      const selected = state.column === status;
+      return h("button", { type: "button", role: "tab", id: `tab-${status}`, "aria-selected": String(selected), "aria-controls": `column-${status}`,
+        tabindex: selected ? "0" : "-1", onclick: () => { state.column = status; renderBoard(); } },
+      statusIcon(status), h("span", {}, text), h("span", { class: "tab-count" }, String(count)));
     }));
     $("board").replaceChildren(...STATUSES.map(([status, text]) => {
       const tasks = visibleTasks().filter((t) => t.status === status);
-      return h("section", { class: `column${state.column === status ? " is-active" : ""}`, "data-status": status, "aria-label": text },
+      return h("section", { class: `column${state.column === status ? " is-active" : ""}`, id: `column-${status}`, "data-status": status, "aria-label": text },
         h("div", { class: "column-head" }, statusIcon(status), h("h2", {}, text), h("span", { class: "mono muted" }, String(tasks.length))),
         tasks.length ? h("ul", { class: "cards" }, tasks.map(taskCard)) : h("p", { class: "column-empty" }, EMPTY_COLUMN[status]));
     }));

@@ -139,6 +139,30 @@ async def test_motion_respects_reduced_motion(client: AsyncClient) -> None:
     assert ":root.theme-switching *" in css
 
 
+async def test_hover_styles_need_a_hover_capable_pointer(client: AsyncClient) -> None:
+    """Every ``:hover`` rule sits inside ``@media (hover: hover)``, so taps never leave it stuck."""
+    css = (await client.get("/static/app.css")).text
+    hover_lines = [line for line in css.splitlines() if ":hover" in line]
+    assert hover_lines
+    assert all(line.startswith("@media (hover: hover) {") for line in hover_lines)
+
+
+async def test_scrolling_panels_contain_overscroll(client: AsyncClient) -> None:
+    """The task panel and the navigation drawer do not scroll the page behind them."""
+    css = (await client.get("/static/app.css")).text
+    assert re.search(r"^dialog \{[^}]*overscroll-behavior: contain", css, re.MULTILINE)
+    assert re.search(r"^\.sidebar \{[^}]*overscroll-behavior: contain", css, re.MULTILINE)
+
+
+async def test_column_tabs_follow_the_tabs_pattern(client: AsyncClient) -> None:
+    """Phone column tabs point at their columns and move with arrow, Home and End keys."""
+    script = (await client.get("/static/app.js")).text
+    assert '"aria-controls": `column-${status}`' in script
+    assert 'tabindex: selected ? "0" : "-1"' in script
+    assert "id: `column-${status}`" in script
+    assert "ArrowLeft: -1, ArrowRight: 1" in script
+
+
 @pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
 async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
     """The page and its assets are never reused from cache without a check."""
