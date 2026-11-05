@@ -217,6 +217,16 @@ async function selectProject(id) {
   $("progress").replaceChildren();
   renderProjects();
   renderProjectView();
+  playEntrance($("project-view").firstElementChild);
+}
+/* Entrance: a view's sections rise in one after another (CSS .is-entering); only on navigation, never on re-render. */
+const entranceTimers = new WeakMap();
+function playEntrance(el) {
+  clearTimeout(entranceTimers.get(el));
+  el.classList.remove("is-entering");
+  void el.offsetWidth;
+  el.classList.add("is-entering");
+  entranceTimers.set(el, setTimeout(() => el.classList.remove("is-entering"), 800));
 }
 
 /* Progress: unfiltered task counts per status, for the rail and the sidebar */
@@ -256,7 +266,8 @@ function renderProgress() {
   if (!c) { box.replaceChildren(); return; }
   const total = countTotal(c);
   if (!box.firstChild) {
-    box.append(railSegments(c, "rail"), h("div", { class: "rail-text" }, h("strong", { class: "rail-done mono" }), h("span", { class: "rail-legend" })));
+    // A new rail (project opened) sweeps in from the left once (CSS .rail.is-filling).
+    box.append(railSegments(c, "rail is-filling"), h("div", { class: "rail-text" }, h("strong", { class: "rail-done" }), h("span", { class: "rail-legend" })));
   }
   const rail = box.querySelector(".rail");
   for (const [status] of STATUSES) rail.querySelector(`.seg-${status}`).style.flexGrow = String(c[status]);
@@ -359,10 +370,19 @@ function renderProjectHead() {
   head.replaceChildren(
     h("div", { class: "row" },
       h("h1", {}, p.name),
-      owner && h("div", { class: "actions" },
-        h("button", { type: "button", onclick: edit }, "Edit name and description"),
-        h("button", { type: "button", class: "danger", onclick: guard(deleteProject) }, "Delete project"))),
+      owner && projectMenu(edit)),
     description);
+}
+function projectMenu(edit) {
+  const pick = (action) => () => { closePopovers(true); action(); };
+  const button = h("button", { type: "button", class: "icon-btn", id: "project-menu-open", "aria-label": "Project actions",
+    "aria-expanded": "false", "aria-controls": "project-menu", onclick: () => togglePopover("project-menu-open") },
+  svg("svg", { viewBox: "0 0 16 16", width: "16", height: "16", "aria-hidden": "true" },
+    ...[3.5, 8, 12.5].map((cx) => svg("circle", { cx: String(cx), cy: "8", r: "1.25", fill: "currentColor" }))));
+  return h("div", { class: "pop-anchor" }, button,
+    h("div", { class: "popover menu-pop", id: "project-menu", role: "group", "aria-label": "Project actions", hidden: true },
+      h("button", { type: "button", class: "menu-item", onclick: pick(edit) }, "Edit project"),
+      h("button", { type: "button", class: "menu-item danger", onclick: pick(guard(deleteProject)) }, "Delete project")));
 }
 async function deleteProject() {
   const p = state.project;
@@ -516,7 +536,7 @@ function statusIcon(status) {
   const parts = {
     todo: [ring()],
     in_progress: [ring(), svg("path", { class: "st-fill", d: "M8 4.5a3.5 3.5 0 0 1 0 7z" })],
-    done: [svg("circle", { class: "st-solid", cx: "8", cy: "8", r: "7" }), svg("path", { class: "st-check", d: "M5.2 8.2l1.9 1.9 3.7-3.9" })],
+    done: [svg("circle", { class: "st-solid", cx: "8", cy: "8", r: "7" }), svg("path", { class: "st-check", d: "M5.2 8.2l1.9 1.9 3.7-3.9", pathLength: "1" })],
   };
   return svg("svg", { class: `status-icon st-${status}`, viewBox: "0 0 16 16", width: "14", height: "14", "aria-hidden": "true" }, ...parts[status]);
 }
@@ -585,7 +605,7 @@ function renderBoard() {
     $("col-tabs").replaceChildren(...STATUSES.map(([status, text]) => {
       const count = visibleTasks().filter((t) => t.status === status).length;
       return h("button", { type: "button", role: "tab", "aria-selected": String(state.column === status),
-        onclick: () => { state.column = status; renderBoard(); } }, statusIcon(status), `${text} (${count})`);
+        onclick: () => { state.column = status; renderBoard(); } }, statusIcon(status), h("span", {}, text), h("span", { class: "tab-count" }, String(count)));
     }));
     $("board").replaceChildren(...STATUSES.map(([status, text]) => {
       const tasks = visibleTasks().filter((t) => t.status === status);
@@ -631,7 +651,9 @@ async function openMyTasks() {
       api("GET", `/projects/${p.id}/tasks?assignee_id=${state.me.id}&limit=100&sort=created_at&order=desc`))));
   }
   state.mine = state.projects.map((project, i) => ({ project, page: pages[i] })).filter((g) => g.page.total > 0);
-  if (state.view === "mine") renderMine();
+  if (state.view !== "mine") return;
+  renderMine();
+  playEntrance($("mine-view"));
 }
 function renderMine() {
   const all = state.mine.flatMap((g) => g.page.items);
@@ -672,6 +694,10 @@ async function moveTask(task, status) {
   replaceTask(updated);
   renderBoard();
   bumpCount(task.status, updated.status);
+  if (status === "done") {
+    const card = $("board").querySelector(`.card[data-id="${updated.id}"]`);
+    if (card) card.classList.add("just-done");
+  }
   if (!slideCard(before, updated.id)) notify(`"${updated.title}" moved to ${labelOf(STATUSES, status)}.`, "info");
 }
 $("new-task").addEventListener("submit", formHandler(async (form, data) => {
@@ -931,7 +957,12 @@ function renderThemeSwitch() {
   }
 }
 function setTheme(choice) {
-  document.documentElement.dataset.theme = choice;
+  // Pause transitions for one frame, so every color does not animate at once and smear the switch.
+  const root = document.documentElement;
+  root.classList.add("theme-switching");
+  root.dataset.theme = choice;
+  void getComputedStyle(root).color;
+  requestAnimationFrame(() => requestAnimationFrame(() => root.classList.remove("theme-switching")));
   try { localStorage.setItem("tt.theme", choice); } catch { /* storage unavailable */ }
   renderThemeSwitch();
 }
@@ -941,7 +972,9 @@ for (const button of document.querySelectorAll("[data-theme-choice]")) {
 renderThemeSwitch();
 
 /* Shell: popovers, mobile navigation drawer, shortcuts */
-const POPOVER_BUTTONS = ["new-task-open", "filter-open"];
+// The project menu is re-rendered with the project head, so only buttons present in the page count.
+const POPOVER_IDS = ["new-task-open", "filter-open", "project-menu-open"];
+const popoverButtons = () => POPOVER_IDS.filter((id) => $(id));
 const panelOf = (buttonId) => $($(buttonId).getAttribute("aria-controls"));
 function setPopover(buttonId, open) {
   panelOf(buttonId).hidden = !open;
@@ -954,18 +987,20 @@ function openPopover(buttonId) {
   if (first) first.focus();
 }
 function closePopovers(restoreFocus = false) {
-  for (const id of POPOVER_BUTTONS) {
+  for (const id of popoverButtons()) {
     if (panelOf(id).hidden) continue;
     setPopover(id, false);
     if (restoreFocus) $(id).focus();
   }
 }
-for (const id of POPOVER_BUTTONS) {
-  $(id).addEventListener("click", () => (panelOf(id).hidden ? openPopover(id) : closePopovers()));
+function togglePopover(buttonId) {
+  if (panelOf(buttonId).hidden) openPopover(buttonId);
+  else closePopovers();
 }
+for (const id of ["new-task-open", "filter-open"]) $(id).addEventListener("click", () => togglePopover(id));
 $("new-task-cancel").addEventListener("click", () => closePopovers(true));
 document.addEventListener("pointerdown", (event) => {
-  for (const id of POPOVER_BUTTONS) {
+  for (const id of popoverButtons()) {
     if (!panelOf(id).hidden && !panelOf(id).contains(event.target) && !$(id).contains(event.target)) setPopover(id, false);
   }
 });
@@ -988,7 +1023,7 @@ document.addEventListener("keydown", (event) => {
   const panelOpen = $("task-dialog").open;
   if (event.key === "Escape") {
     if (panelOpen) return;
-    if (POPOVER_BUTTONS.some((id) => !panelOf(id).hidden)) { event.preventDefault(); closePopovers(true); return; }
+    if (popoverButtons().some((id) => !panelOf(id).hidden)) { event.preventDefault(); closePopovers(true); return; }
     if (!$("new-project").hidden && $("new-project").contains(document.activeElement)) { setNewProjectForm(false); $("new-project-toggle").focus(); return; }
     if ($("sidebar").classList.contains("is-open")) setNav(false);
     return;

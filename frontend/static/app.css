@@ -13,6 +13,8 @@
 /* Design tokens. Dark is the default; data-theme on <html> is "dark", "light" or "system" (set by theme.js). */
 :root {
   --bg: #0F1011; --surface: #16171A; --raised: #1E1F23; --border: #26282D; --border-strong: #3A3D44;
+  /* Form control edges: at least 3:1 against --surface, --bg and --raised (WCAG 1.4.11). */
+  --border-input: #666A72;
   --ink: #E6E7EA; --muted: #8A8F98;
   --accent: #7C7FF2; --accent-solid: #5B5FE0; --accent-ink: #FFFFFF;
   --done: #4CB782; --overdue: #EF6461; --danger-solid: #C93C37; --on-solid: #FFFFFF; --seg-todo: #6B707A;
@@ -26,6 +28,7 @@
 }
 :root[data-theme="light"] {
   --bg: #F7F7F8; --surface: #FFFFFF; --raised: #EFEFF2; --border: #E1E2E6; --border-strong: #C9CBD1;
+  --border-input: #868A92;
   --ink: #1B1C1F; --muted: #62666D;
   --accent: #4F52D9; --accent-solid: #4F52D9; --accent-ink: #FFFFFF;
   --done: #2A7F50; --overdue: #C93C37; --danger-solid: #C93C37; --on-solid: #FFFFFF; --seg-todo: #B5B8BF;
@@ -36,6 +39,7 @@
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
     --bg: #F7F7F8; --surface: #FFFFFF; --raised: #EFEFF2; --border: #E1E2E6; --border-strong: #C9CBD1;
+    --border-input: #868A92;
     --ink: #1B1C1F; --muted: #62666D;
     --accent: #4F52D9; --accent-solid: #4F52D9; --accent-ink: #FFFFFF;
     --done: #2A7F50; --overdue: #C93C37; --danger-solid: #C93C37; --on-solid: #FFFFFF; --seg-todo: #B5B8BF;
@@ -60,7 +64,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 kbd { font-family: var(--mono); font-size: 0.7rem; line-height: 1.4; padding: 0 0.3rem; border-radius: 4px; border: 1px solid color-mix(in srgb, currentColor 35%, transparent); }
 .icon-stroke { fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
-button { cursor: pointer; border-radius: 6px; padding: 0.4rem 0.8rem; border: 1px solid var(--border-strong); background: var(--surface); transition: background-color var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease; }
+button { cursor: pointer; border-radius: 6px; padding: 0.4rem 0.8rem; border: 1px solid var(--border-strong); background: var(--surface); transition: background-color var(--fast) ease, border-color var(--fast) ease, color var(--fast) ease, scale 150ms ease-out; }
 button:hover { border-color: var(--muted); }
 button.primary { background: var(--accent-solid); color: var(--accent-ink); border-color: var(--accent-solid); font-weight: 500; }
 button.primary:hover { background: color-mix(in srgb, var(--accent-solid) 92%, var(--ink)); }
@@ -72,7 +76,7 @@ button.small, button.ghost { display: inline-flex; align-items: center; gap: 0.4
 .icon-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 0; background: none; color: var(--muted); }
 .icon-btn:hover { background: var(--raised); color: var(--ink); }
 button.link { border: 0; background: none; padding: 0.2rem 0.3rem; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
-input, select, textarea { background: var(--surface); border: 1px solid var(--border-strong); border-radius: 6px; padding: 0.4rem 0.55rem; min-width: 0; }
+input, select, textarea { background: var(--surface); border: 1px solid var(--border-input); border-radius: 6px; padding: 0.4rem 0.55rem; min-width: 0; }
 textarea { resize: vertical; width: 100%; }
 label { display: grid; gap: 0.25rem; font-size: 0.875rem; color: var(--muted); }
 label > input, label > select, label > textarea { color: var(--ink); font-size: 0.95rem; }
@@ -175,7 +179,13 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .order-select { margin-left: auto; }
 .order-select select { font-size: 0.8125rem; padding: 0.25rem 0.4rem; }
 .project-head { display: grid; gap: 0.5rem; }
-.project-head .row { display: flex; align-items: center; gap: 0.5rem 1.25rem; flex-wrap: wrap; }
+.project-head .row { display: flex; align-items: center; gap: 0.5rem; }
+.project-head h1 { min-width: 0; overflow-wrap: anywhere; }
+/* Project actions: one "more" button opening a short menu of secondary actions. */
+/* Menu sits on --surface so the red Delete item keeps 4.5:1 in light mode (4.37:1 on --raised). */
+.menu-pop { left: 0; width: max-content; min-width: 11rem; padding: 0.25rem; display: grid; gap: 1px; background: var(--surface); }
+.menu-item { display: flex; width: 100%; border: 0; background: none; padding: 0.4rem 0.6rem; text-align: left; font-size: 0.8125rem; }
+.menu-item:hover { background: color-mix(in srgb, var(--raised) 50%, var(--surface)); }
 .project-head p { max-width: 70ch; overflow-wrap: anywhere; white-space: pre-wrap; }
 /* Signature: the progress rail. One bar, three segments sized by task counts. */
 .progress { display: grid; gap: 0.55rem; }
@@ -187,7 +197,7 @@ main { min-width: 0; display: flex; flex-direction: column; }
 .seg-done { background: var(--done); }
 .rail.is-complete { box-shadow: 0 0 0 3px color-mix(in srgb, var(--done) 30%, transparent); }
 .rail-text { display: flex; justify-content: space-between; align-items: baseline; gap: 0.25rem 1rem; flex-wrap: wrap; font-size: 0.875rem; }
-.rail-done { font-weight: 500; font-size: 0.95rem; }
+.rail-done { font-weight: 600; font-size: 0.95rem; font-variant-numeric: tabular-nums; }
 .rail-legend { display: flex; gap: 0.25rem 1rem; flex-wrap: wrap; color: var(--muted); }
 .legend-item { display: inline-flex; align-items: center; gap: 0.4rem; }
 .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
@@ -308,12 +318,14 @@ dialog::backdrop { background: var(--backdrop); }
   .pagebar { padding: 0.4rem 1rem 0.4rem 0.6rem; gap: 0.5rem; }
   .content { padding: 1.25rem 1rem 3rem; }
   .popover { position: fixed; top: 56px; left: 16px; right: 16px; width: auto; }
+  .menu-pop { position: absolute; top: calc(100% + 6px); left: auto; right: 0; width: max-content; }
   .seg-label, #new-task-open kbd { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .seg-toggle button { padding: 0.3rem 0.45rem; }
   .row-main { gap: 0.5rem; padding: 0.4rem 0.6rem; }
   .row .task-id { min-width: 0; }
   .col-tabs { display: flex; border-bottom: 1px solid var(--border); }
-  .col-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 0.55rem 0.25rem; color: var(--muted); }
+  .col-tabs button { flex: 1 1 0; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 0.55rem 0.125rem; color: var(--muted); font-size: 0.8125rem; white-space: nowrap; }
+  .tab-count { font-variant-numeric: tabular-nums; color: var(--muted); font-weight: 400; }
   .col-tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 500; }
   .board { grid-template-columns: 1fr; }
   .column:not(.is-active) { display: none; }
@@ -323,7 +335,36 @@ dialog::backdrop { background: var(--backdrop); }
   .prop { grid-template-columns: 5.5rem minmax(0, 1fr); }
   .panel-hint { display: none; }
 }
+/* Below 360px the status icon gives way so "In progress 12" stays on one line; the label carries the status. */
+@media (max-width: 359px) {
+  .col-tabs .status-icon { display: none; }
+}
+/* Motion. Movement, scale and blur only run with no reduced-motion preference; under "reduce"
+   the same moments fall back to an opacity fade (below). Every animated change also leaves a
+   static cue: the content itself, the rail counts, the filled Done icon. */
+:root.theme-switching *, :root.theme-switching *::before, :root.theme-switching *::after { transition: none !important; }
+@keyframes rise-in { from { opacity: 0; filter: blur(4px); transform: translateY(12px); } }
+@keyframes fade-in { from { opacity: 0; } }
+@keyframes toast-in { from { opacity: 0; filter: blur(4px); transform: translate(-50%, 12px); } }
+@keyframes done-pop { from { transform: scale(0.25); } }
+@keyframes check-draw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
+@keyframes rail-fill { from { clip-path: inset(0 100% 0 0 round 999px); } to { clip-path: inset(0 0 0 0 round 999px); } }
+@media (prefers-reduced-motion: no-preference) {
+  /* Opening a project or My tasks: sections rise in 100ms apart (title, progress, toolbar, board). */
+  .is-entering > * { animation: rise-in 300ms ease-out both; }
+  .is-entering > :nth-child(2) { animation-delay: 100ms; }
+  .is-entering > :nth-child(3), .is-entering > :nth-child(4) { animation-delay: 200ms; }
+  .is-entering > :nth-child(n + 5) { animation-delay: 300ms; }
+  #notice:not(:empty) { animation: toast-in 300ms ease-out; }
+  /* The progress rail sweeps in from the left as its row arrives. */
+  .rail.is-filling { animation: rail-fill 500ms cubic-bezier(0.2, 0, 0, 1) 150ms backwards; }
+  /* Mark done: the green disc pops in, then the check draws itself. */
+  .just-done .st-solid { transform-box: fill-box; transform-origin: center; animation: done-pop 300ms cubic-bezier(0.2, 0, 0, 1); }
+  .just-done .st-check { stroke-dasharray: 1; animation: check-draw 300ms cubic-bezier(0.2, 0, 0, 1) 150ms both; }
+  :is(button.primary, button.ghost, button.small, button:not([class]), .icon-btn, .chip, .pill, .seg-toggle button, .theme-switch button):not(:disabled):active { scale: 0.96; }
+}
 @media (prefers-reduced-motion: reduce) {
+  .is-entering, #notice:not(:empty) { animation: fade-in 200ms ease-out; }
   .rail, .rail .seg, button, .sidebar, .sidebar.is-open { transition: none; }
   .popover, dialog[open] { animation: none; }
   .card.is-new { animation: none; border-color: var(--accent); }

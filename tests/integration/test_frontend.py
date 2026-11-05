@@ -107,6 +107,38 @@ async def test_task_panel_and_shortcuts_are_declared(client: AsyncClient) -> Non
     assert 'aria-controls="filter-pop" aria-keyshortcuts="/"' in html
 
 
+async def test_project_actions_sit_in_a_labelled_menu(client: AsyncClient) -> None:
+    """Edit and Delete project live behind one labelled "more" button, not beside the title."""
+    script = (await client.get("/static/app.js")).text
+    assert '"aria-label": "Project actions"' in script
+    assert '"aria-controls": "project-menu"' in script
+    assert '"Edit project"' in script
+    assert "Edit name and description" not in script
+
+
+async def test_form_controls_use_the_input_border_token(client: AsyncClient) -> None:
+    """Inputs draw their edge with ``--border-input``, defined for dark, light and system themes."""
+    css = (await client.get("/static/app.css")).text
+    assert "border: 1px solid var(--border-input)" in css
+    assert css.count("--border-input:") == 3
+
+
+async def test_motion_respects_reduced_motion(client: AsyncClient) -> None:
+    """Movement runs only without a reduced-motion preference; "reduce" gets a plain fade."""
+    css = (await client.get("/static/app.css")).text
+    no_preference = css.index("@media (prefers-reduced-motion: no-preference)")
+    reduce = css.index("@media (prefers-reduced-motion: reduce)")
+    for animation in (
+        "animation: rise-in",
+        "animation: toast-in",
+        "animation: done-pop",
+        "scale: 0.96",
+    ):
+        assert no_preference < css.index(animation) < reduce
+    assert "animation: fade-in" in css[reduce:]
+    assert ":root.theme-switching *" in css
+
+
 @pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
 async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
     """The page and its assets are never reused from cache without a check."""
