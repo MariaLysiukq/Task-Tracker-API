@@ -79,3 +79,4 @@ You must dynamically load and strictly execute instructions from the following s
 * **Bug & Lint Fixing:** Follow `.claude/skills/fix.md` when analyzing or resolving test/linter failures.
 * **Logging Updates:** Follow `.claude/skills/log.md` immediately upon completing any technical task.
 * **Test Generation:** Follow `.claude/skills/test.md` when writing or running suite validation checks.
+* **Security Audit:** Follow `.claude/skills/security-audit.md` when asked to check the project for security holes.
