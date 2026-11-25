@@ -1,0 +1,49 @@
+default_language_version:
+  python: python3.12
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.11.6
+    hooks:
+      - id: ruff
+        args: [ --fix ]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.15.0
+    hooks:
+      - id: mypy
+        args: [ --strict ]
+        files: ^app/
+        additional_dependencies:
+          - alembic==1.15.2
+          - fastapi==0.162.0
+          - pwdlib[argon2]==0.2.1
+          - pydantic==2.11.3
+          - pydantic-settings==2.8.1
+          - pyjwt==2.15.1
+          - sqlalchemy[asyncio]==2.0.40
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.2
+    hooks:
+      - id: gitleaks
+
+  - repo: local
+    hooks:
+      - id: check-empty-lines
+        name: Check empty lines in functions
+        entry: python scripts/check_empty_lines.py
+        language: python
+        types: [ python ]
+        pass_filenames: true

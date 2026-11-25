@@ -1,0 +1,211 @@
+"""Integration tests for the web client served at ``/`` and its ``/static`` assets."""
+
+import re
+
+import pytest
+from httpx import AsyncClient
+
+from app.api.frontend import CONTENT_SECURITY_POLICY
+
+
+async def test_index_serves_web_client(client: AsyncClient) -> None:
+    """The root path returns the HTML page that loads its own assets."""
+    response = await client.get("/")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/html")
+    assert "<title>Task Tracker</title>" in response.text
+    assert '<script src="/static/app.js" defer></script>' in response.text
+
+
+async def test_index_sends_strict_page_headers(client: AsyncClient) -> None:
+    """The page forbids framing and anything not served by the app itself."""
+    response = await client.get("/")
+    assert response.headers["content-security-policy"] == CONTENT_SECURITY_POLICY
+    assert "frame-ancestors 'none'" in CONTENT_SECURITY_POLICY
+    assert "unsafe-inline" not in CONTENT_SECURITY_POLICY
+    assert response.headers["x-frame-options"] == "DENY"
+
+
+async def test_index_has_no_inline_code_or_external_sources(client: AsyncClient) -> None:
+    """Inline scripts, styles and third-party URLs would be blocked by the CSP."""
+    html = (await client.get("/")).text
+    assert re.search(r"<script(?![^>]*\bsrc=)", html) is None
+    assert "<style" not in html
+    assert "style=" not in html
+    assert re.search(r"""(?:src|href)=["']https?://""", html) is None
+
+
+@pytest.mark.parametrize(
+    ("path", "content_type"),
+    [
+        ("/static/app.js", "text/javascript"),
+        ("/static/app.css", "text/css"),
+        ("/static/theme.js", "text/javascript"),
+        ("/static/fonts/inter-latin-400-normal.woff2", "font/woff2"),
+    ],
+)
+async def test_static_assets_are_served(client: AsyncClient, path: str, content_type: str) -> None:
+    """Script, stylesheet and fonts come from the app with their real types."""
+    response = await client.get(path)
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith(content_type)
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_every_stylesheet_font_is_served(client: AsyncClient) -> None:
+    """Each ``url()`` in ``app.css`` resolves to a self-hosted font file."""
+    css = (await client.get("/static/app.css")).text
+    urls = re.findall(r'url\("([^"]+)"\)', css)
+    assert urls
+    assert all(url.startswith("fonts/") for url in urls)
+    for url in urls:
+        response = await client.get(f"/static/{url}")
+        assert response.status_code == 200, url
+        assert response.headers["content-type"].startswith("font/woff2")
+
+
+async def test_theme_is_applied_before_first_paint(client: AsyncClient) -> None:
+    """Dark is the default, and the saved theme is set by a blocking script in ``<head>``."""
+    html = (await client.get("/")).text
+    head = html.split("</head>", 1)[0]
+    assert '<html lang="en" data-theme="dark">' in html
+    assert '<script src="/static/theme.js"></script>' in head
+    script = (await client.get("/static/theme.js")).text
+    assert 'localStorage.getItem("tt.theme")' in script
+    for choice in ("system", "light", "dark"):
+        assert f'data-theme-choice="{choice}"' in html
+
+
+async def test_shell_controls_are_labelled(client: AsyncClient) -> None:
+    """Sidebar drawer, New task popover and filter menu expose their state to assistive tech."""
+    html = (await client.get("/")).text
+    assert (
+        'id="nav-open" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false"'
+        in html
+    )
+    assert 'aria-controls="new-task-pop" aria-keyshortcuts="c"' in html
+    assert 'id="new-task-pop" role="dialog" aria-label="New task" hidden' in html
+    assert 'id="filter-open" aria-expanded="false" aria-controls="filter-pop"' in html
+    assert 'id="filter-pills" aria-label="Active filters"' in html
+
+
+async def test_views_can_be_switched(client: AsyncClient) -> None:
+    """The page offers My tasks and a Board/List layout switch with pressed states."""
+    html = (await client.get("/")).text
+    assert 'id="my-tasks" aria-current="false"' in html
+    assert 'id="layout-toggle" role="group" aria-label="Layout"' in html
+    assert 'data-layout="board" aria-pressed="true"' in html
+    assert 'data-layout="list" aria-pressed="false"' in html
+    assert 'id="list" hidden' in html
+    assert 'id="mine-view"' in html
+
+
+async def test_task_panel_and_shortcuts_are_declared(client: AsyncClient) -> None:
+    """The task panel is a labelled dialog and the Filter shortcut is announced."""
+    html = (await client.get("/")).text
+    assert '<dialog id="task-dialog" class="panel" aria-label="Task">' in html
+    assert 'aria-controls="filter-pop" aria-keyshortcuts="/"' in html
+
+
+async def test_project_actions_sit_in_a_labelled_menu(client: AsyncClient) -> None:
+    """Edit and Delete project live behind one labelled "more" button, not beside the title."""
+    script = (await client.get("/static/app.js")).text
+    assert '"aria-label": "Project actions"' in script
+    assert '"aria-controls": "project-menu"' in script
+    assert '"Edit project"' in script
+    assert "Edit name and description" not in script
+
+
+async def test_form_controls_use_the_input_border_token(client: AsyncClient) -> None:
+    """Inputs draw their edge with ``--border-input``, defined for dark, light and system themes."""
+    css = (await client.get("/static/app.css")).text
+    assert "border: 1px solid var(--border-input)" in css
+    assert css.count("--border-input:") == 3
+
+
+async def test_motion_respects_reduced_motion(client: AsyncClient) -> None:
+    """Movement runs only without a reduced-motion preference; "reduce" gets a plain fade."""
+    css = (await client.get("/static/app.css")).text
+    no_preference = css.index("@media (prefers-reduced-motion: no-preference)")
+    reduce = css.index("@media (prefers-reduced-motion: reduce)")
+    for animation in (
+        "animation: rise-in",
+        "animation: toast-in",
+        "animation: done-pop",
+        "scale: 0.96",
+    ):
+        assert no_preference < css.index(animation) < reduce
+    assert "animation: fade-in" in css[reduce:]
+    assert ":root.theme-switching *" in css
+
+
+async def test_hover_styles_need_a_hover_capable_pointer(client: AsyncClient) -> None:
+    """Every ``:hover`` rule sits inside ``@media (hover: hover)``, so taps never leave it stuck."""
+    css = (await client.get("/static/app.css")).text
+    hover_lines = [line for line in css.splitlines() if ":hover" in line]
+    assert hover_lines
+    assert all(line.startswith("@media (hover: hover) {") for line in hover_lines)
+
+
+async def test_scrolling_panels_contain_overscroll(client: AsyncClient) -> None:
+    """The task panel and the navigation drawer do not scroll the page behind them."""
+    css = (await client.get("/static/app.css")).text
+    assert re.search(r"^dialog \{[^}]*overscroll-behavior: contain", css, re.MULTILINE)
+    assert re.search(r"^\.sidebar \{[^}]*overscroll-behavior: contain", css, re.MULTILINE)
+
+
+async def test_column_tabs_follow_the_tabs_pattern(client: AsyncClient) -> None:
+    """Phone column tabs point at their columns and move with arrow, Home and End keys."""
+    script = (await client.get("/static/app.js")).text
+    assert '"aria-controls": `column-${status}`' in script
+    assert 'tabindex: selected ? "0" : "-1"' in script
+    assert "id: `column-${status}`" in script
+    assert "ArrowLeft: -1, ArrowRight: 1" in script
+
+
+@pytest.mark.parametrize("path", ["/", "/static/app.css", "/static/app.js", "/static/theme.js"])
+async def test_client_files_are_revalidated(client: AsyncClient, path: str) -> None:
+    """The page and its assets are never reused from cache without a check."""
+    response = await client.get(path)
+    assert response.headers["cache-control"] == "no-cache"
+
+
+async def test_unchanged_asset_returns_not_modified(client: AsyncClient) -> None:
+    """Revalidation with the ETag costs a 304, not the whole file."""
+    first = await client.get("/static/app.css")
+    second = await client.get("/static/app.css", headers={"If-None-Match": first.headers["etag"]})
+    assert second.status_code == 304
+    assert second.headers["cache-control"] == "no-cache"
+
+
+async def test_app_script_calls_api_v1(client: AsyncClient) -> None:
+    """The client talks to the versioned API on the same origin."""
+    response = await client.get("/static/app.js")
+    assert 'const API = "/api/v1";' in response.text
+
+
+async def test_page_is_not_reachable_without_headers_under_static(client: AsyncClient) -> None:
+    """The page is only served at ``/``, so its CSP cannot be bypassed via ``/static``."""
+    response = await client.get("/static/index.html")
+    assert response.status_code == 404
+
+
+async def test_api_responses_carry_security_headers(client: AsyncClient) -> None:
+    """JSON responses, including errors, get ``nosniff`` and ``no-referrer``."""
+    response = await client.get("/api/v1/users/me")
+    assert response.status_code == 401
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+
+
+async def test_index_is_not_in_openapi_schema(client: AsyncClient) -> None:
+    """The page route is not documented as an API endpoint."""
+    response = await client.get("/openapi.json")
+    assert "/" not in response.json()["paths"]
+
+
+async def test_unknown_path_still_returns_json_404(client: AsyncClient) -> None:
+    """Serving the page does not swallow unknown paths."""
+    response = await client.get("/api/v1/does-not-exist")
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Not Found"}
